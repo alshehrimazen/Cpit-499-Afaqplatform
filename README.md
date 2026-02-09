@@ -1,7 +1,5 @@
 
-  # Afaq Platform Website Design
-
-  This is a code bundle for Afaq Platform Website Design. The original project is available at https://www.figma.com/design/QrTOQT55IodshWQTdkTrcZ/Afaq-Platform-Website-Design.
+  # Afaq Platform Website 
 
   ## Running the code
 

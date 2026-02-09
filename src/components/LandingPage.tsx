@@ -1,12 +1,10 @@
+import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Brain, TrendingUp, Target, Sparkles, Award } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 
-interface LandingPageProps {
-  onNavigate: (page: 'login' | 'signup') => void;
-}
-
-export function LandingPage({ onNavigate }: LandingPageProps) {
+export function LandingPage() {
+  const navigate = useNavigate();
   const features = [
     {
       icon: Brain,
@@ -52,10 +50,10 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             <span className="text-2xl">منصة آفاق</span>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" onClick={() => onNavigate('login')}>
+            <Button variant="ghost" onClick={() => navigate('/login')}>
               تسجيل الدخول
             </Button>
-            <Button onClick={() => onNavigate('signup')} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+            <Button onClick={() => navigate('/signup')} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
               ابدأ الآن
             </Button>
           </div>
@@ -69,27 +67,27 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             <Sparkles className="w-4 h-4 text-purple-600" />
             <span className="text-sm text-purple-700">التعلم التكيفي بالذكاء الاصطناعي</span>
           </div>
-          
+
           <h1 className="text-4xl lg:text-6xl mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
             مساعدك الدراسي الشخصي للتميز الأكاديمي
           </h1>
-          
+
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
             تستخدم منصة آفاق الذكاء الاصطناعي المتقدم لإنشاء خطط دراسية مخصصة وتتبع تقدمك ومساعدتك على التفوق في امتحانات الثانوية والتحضير للتحصيلي.
           </p>
-          
+
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button 
-              size="lg" 
-              onClick={() => onNavigate('signup')}
+            <Button
+              size="lg"
+              onClick={() => navigate('/signup')}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8"
             >
               ابدأ التعلم الآن
             </Button>
-            <Button 
-              size="lg" 
+            <Button
+              size="lg"
               variant="outline"
-              onClick={() => onNavigate('login')}
+              onClick={() => navigate('/login')}
               className="text-lg px-8"
             >
               تسجيل الدخول
@@ -108,7 +106,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             أدوات وميزات شاملة مصممة خصيصاً لطلاب الثانوية وخريجي اختبار التحصيلي
           </p>
         </div>
-        
+
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
           {features.map((feature, index) => {
             const Icon = feature.icon;
@@ -135,7 +133,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             اتبع عمليتنا المثبتة خطوة بخطوة لتحقيق أهدافك الأكاديمية
           </p>
         </div>
-        
+
         <div className="max-w-4xl mx-auto">
           {[
             { step: 1, title: 'إنشاء حسابك', description: 'سجل واحصل على لوحة التحكم الشخصية الخاصة بك' },
@@ -166,9 +164,9 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
           <p className="text-xl mb-8 opacity-90">
             انضم إلى الآلاف من الطلاب الذين يحققون النجاح بالفعل مع منصة آفاق
           </p>
-          <Button 
-            size="lg" 
-            onClick={() => onNavigate('signup')}
+          <Button
+            size="lg"
+            onClick={() => navigate('/signup')}
             className="bg-white text-purple-600 hover:bg-gray-100 text-lg px-8"
           >
             ابدأ مجاناً

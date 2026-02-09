@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
@@ -14,22 +15,7 @@ import { FinalExam } from './components/exam/FinalExam';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { Sidebar } from './components/layout/Sidebar';
 
-type Page = 
-  | 'landing' 
-  | 'login' 
-  | 'signup' 
-  | 'diagnostic'
-  | 'preferences'
-  | 'home'
-  | 'friends'
-  | 'plan'
-  | 'study' 
-  | 'flashcards'
-  | 'quiz' 
-  | 'final-exam' 
-  | 'analytics';
-
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
@@ -50,15 +36,16 @@ export interface StudyPlan {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [user, setUser] = useState<User | null>(null);
   const [studyPlans, setStudyPlans] = useState<StudyPlan[]>([]);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
   const [currentModule, setCurrentModule] = useState<string | null>(null);
-  const [currentQuiz, setCurrentQuiz] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [creatingNewPlan, setCreatingNewPlan] = useState(false);
   const [diagnosticLevel, setDiagnosticLevel] = useState<string>('');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const showSidebar = user && !['/landing', '/login', '/signup', '/diagnostic', '/preferences'].includes(location.pathname);
 
   const handleLogin = (email: string, password: string, isGuest = false) => {
     const newUser: User = {
@@ -70,8 +57,7 @@ export default function App() {
       avatar: isGuest ? 'ز' : email.charAt(0).toUpperCase()
     };
     setUser(newUser);
-    
-    // Simulate existing user with some plans
+
     const mockPlans: StudyPlan[] = [
       {
         id: 'plan-1',
@@ -85,7 +71,7 @@ export default function App() {
       }
     ];
     setStudyPlans(mockPlans);
-    setCurrentPage('home');
+    navigate('/home');
   };
 
   const handleSignup = (name: string, email: string, password: string) => {
@@ -98,18 +84,12 @@ export default function App() {
     };
     setUser(newUser);
     setStudyPlans([]);
-    setCurrentPage('home');
-  };
-
-  const handleCreateNewPlan = () => {
-    setCreatingNewPlan(true);
-    setCurrentPage('diagnostic');
+    navigate('/diagnostic');
   };
 
   const handleDiagnosticComplete = (level: string) => {
-    // Store the diagnostic level and go to preferences
     setDiagnosticLevel(level);
-    setCurrentPage('preferences');
+    navigate('/preferences');
   };
 
   const handlePreferencesComplete = (preferences: StudyPreferencesData) => {
@@ -118,7 +98,7 @@ export default function App() {
       intermediate: 'خطة دراسية للمستوى المتوسط',
       advanced: 'خطة دراسية للمستوى المتقدم'
     };
-    
+
     const newPlan: StudyPlan = {
       id: `plan-${Date.now()}`,
       title: levelTitles[diagnosticLevel as keyof typeof levelTitles] || 'خطة دراسية',
@@ -129,73 +109,21 @@ export default function App() {
       quizScores: {},
       createdAt: new Date()
     };
-    
+
     setStudyPlans([...studyPlans, newPlan]);
-    setCreatingNewPlan(false);
     setDiagnosticLevel('');
-    setCurrentPage('home');
-  };
-
-  const handleOpenPlan = (planId: string) => {
-    setCurrentPlanId(planId);
-    setCurrentPage('plan');
-  };
-
-  const handleStartModule = (moduleId: string) => {
-    setCurrentModule(moduleId);
-    setCurrentPage('study');
-  };
-
-  const handleModuleComplete = (moduleId: string) => {
-    // When module is completed, go to flashcards first
-    setCurrentPage('flashcards');
-  };
-
-  const handleFlashcardsComplete = () => {
-    // After flashcards, go to quiz
-    if (currentModule) {
-      setCurrentQuiz(currentModule);
-      setCurrentPage('quiz');
-    }
-  };
-
-  const handleQuizComplete = (moduleId: string, score: number) => {
-    if (!currentPlanId) return;
-
-    setStudyPlans(plans => plans.map(plan => {
-      if (plan.id === currentPlanId) {
-        const updatedModules = [...plan.completedModules];
-        if (!updatedModules.includes(moduleId)) {
-          updatedModules.push(moduleId);
-        }
-        const updatedScores = { ...plan.quizScores, [moduleId]: score };
-        const completionPercentage = (updatedModules.length / 5) * 100;
-        
-        return {
-          ...plan,
-          completedModules: updatedModules,
-          quizScores: updatedScores,
-          completionPercentage,
-          status: completionPercentage === 100 ? 'completed' : 'in-progress'
-        };
-      }
-      return plan;
-    }));
-
-    setCurrentQuiz(null);
-    setCurrentPage('plan');
+    navigate('/home');
   };
 
   const handleLogout = () => {
     setUser(null);
     setStudyPlans([]);
     setCurrentPlanId(null);
-    setCurrentPage('landing');
+    setCurrentModule(null);
+    navigate('/landing');
   };
 
   const currentPlan = studyPlans.find(p => p.id === currentPlanId);
-
-  const showSidebar = user && currentPage !== 'landing' && currentPage !== 'login' && currentPage !== 'signup' && currentPage !== 'diagnostic' && currentPage !== 'preferences';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50" dir="rtl">
@@ -203,114 +131,166 @@ export default function App() {
         <Sidebar
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
-          currentPage={currentPage}
-          onNavigate={setCurrentPage}
+          currentPage={location.pathname}
           user={user}
           onLogout={handleLogout}
           studyPlans={studyPlans}
         />
       )}
-      
+
       <div className={showSidebar ? 'lg:pr-64' : ''}>
-        {currentPage === 'landing' && (
-          <LandingPage onNavigate={setCurrentPage} />
-        )}
-        
-        {currentPage === 'login' && (
-          <LoginPage onLogin={handleLogin} onNavigate={setCurrentPage} />
-        )}
-        
-        {currentPage === 'signup' && (
-          <SignupPage onSignup={handleSignup} onNavigate={setCurrentPage} />
-        )}
-        
-        {currentPage === 'diagnostic' && user && (
-          <DiagnosticTest 
-            onComplete={handleDiagnosticComplete} 
-            userName={user.name}
-            onCancel={() => setCurrentPage('home')}
-          />
-        )}
-        
-        {currentPage === 'preferences' && user && (
-          <StudyPreferences
-            userName={user.name}
-            diagnosticLevel={diagnosticLevel}
-            onComplete={handlePreferencesComplete}
-            onCancel={() => setCurrentPage('home')}
-          />
-        )}
-        
-        {currentPage === 'home' && user && (
-          <PersonalizedHome
-            user={user}
-            studyPlans={studyPlans}
-            onCreateNewPlan={handleCreateNewPlan}
-            onOpenPlan={handleOpenPlan}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'friends' && user && (
-          <Friends
-            user={user}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'plan' && user && currentPlan && (
-          <PlanDashboard
-            user={user}
-            plan={currentPlan}
-            onStartModule={handleStartModule}
-            onNavigate={setCurrentPage}
-            onBack={() => setCurrentPage('home')}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'study' && currentModule && (
-          <StudyModule
-            moduleId={currentModule}
-            onComplete={handleModuleComplete}
-            onBack={() => setCurrentPage('plan')}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'flashcards' && currentModule && (
-          <LessonFlashcards
-            moduleId={currentModule}
-            onComplete={handleFlashcardsComplete}
-            onBack={() => setCurrentPage('plan')}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'quiz' && currentQuiz && (
-          <QuizInterface
-            moduleId={currentQuiz}
-            onComplete={handleQuizComplete}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'final-exam' && currentPlan && (
-          <FinalExam
-            plan={currentPlan}
-            onComplete={() => setCurrentPage('analytics')}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
-        
-        {currentPage === 'analytics' && user && currentPlan && (
-          <AnalyticsDashboard
-            user={user}
-            plan={currentPlan}
-            onNavigate={setCurrentPage}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          />
-        )}
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/landing" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+          <Route path="/signup" element={<SignupPage onSignup={handleSignup} />} />
+
+          {user && (
+            <>
+              <Route
+                path="/diagnostic"
+                element={
+                  <DiagnosticTest
+                    onComplete={handleDiagnosticComplete}
+                    userName={user.name}
+                    onCancel={() => navigate('/home')}
+                  />
+                }
+              />
+              <Route
+                path="/preferences"
+                element={
+                  <StudyPreferences
+                    userName={user.name}
+                    diagnosticLevel={diagnosticLevel}
+                    onComplete={handlePreferencesComplete}
+                    onCancel={() => navigate('/home')}
+                  />
+                }
+              />
+              <Route
+                path="/home"
+                element={
+                  <PersonalizedHome
+                    user={user}
+                    studyPlans={studyPlans}
+                    onCreateNewPlan={() => navigate('/diagnostic')}
+                    onOpenPlan={(planId) => {
+                      setCurrentPlanId(planId);
+                      navigate(`/plan/${planId}`);
+                    }}
+                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  />
+                }
+              />
+              <Route
+                path="/friends"
+                element={
+                  <Friends
+                    user={user}
+                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  />
+                }
+              />
+              <Route
+                path="/plan/:planId"
+                element={
+                  currentPlan ? (
+                    <PlanDashboard
+                      user={user}
+                      plan={currentPlan}
+                      onStartModule={(moduleId) => {
+                        setCurrentModule(moduleId);
+                        navigate(`/study/${moduleId}`);
+                      }}
+                      onNavigate={(path) => navigate(path)}
+                      onBack={() => navigate('/home')}
+                      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                    />
+                  ) : null
+                }
+              />
+              <Route
+                path="/study/:moduleId"
+                element={
+                  <StudyModule
+                    moduleId={currentModule || ''}
+                    onComplete={() => navigate(`/flashcards/${currentModule}`)}
+                    onBack={() => navigate(-1)}
+                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  />
+                }
+              />
+              <Route
+                path="/flashcards/:moduleId"
+                element={
+                  <LessonFlashcards
+                    moduleId={currentModule || ''}
+                    onComplete={() => navigate(`/quiz/${currentModule}`)}
+                    onBack={() => navigate(-1)}
+                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  />
+                }
+              />
+              <Route
+                path="/quiz/:moduleId"
+                element={
+                  <QuizInterface
+                    moduleId={currentModule || ''}
+                    onComplete={(moduleId, score) => {
+                      if (!currentPlanId) return;
+                      setStudyPlans(plans => plans.map(plan => {
+                        if (plan.id === currentPlanId) {
+                          const updatedModules = [...plan.completedModules];
+                          if (!updatedModules.includes(moduleId)) {
+                            updatedModules.push(moduleId);
+                          }
+                          const updatedScores = { ...plan.quizScores, [moduleId]: score };
+                          const completionPercentage = (updatedModules.length / 5) * 100;
+                          return {
+                            ...plan,
+                            completedModules: updatedModules,
+                            quizScores: updatedScores,
+                            completionPercentage,
+                            status: completionPercentage === 100 ? 'completed' : 'in-progress'
+                          };
+                        }
+                        return plan;
+                      }));
+                      navigate(`/plan/${currentPlanId}`);
+                    }}
+                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  />
+                }
+              />
+              <Route
+                path="/final-exam/:planId"
+                element={
+                  currentPlan ? (
+                    <FinalExam
+                      plan={currentPlan}
+                      onComplete={() => navigate(`/analytics/${currentPlanId}`)}
+                      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                    />
+                  ) : null
+                }
+              />
+              <Route
+                path="/analytics/:planId"
+                element={
+                  currentPlan ? (
+                    <AnalyticsDashboard
+                      user={user}
+                      plan={currentPlan}
+                      onNavigate={(path) => navigate(path)}
+                      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                    />
+                  ) : null
+                }
+              />
+            </>
+          )}
+        </Routes>
       </div>
     </div>
   );

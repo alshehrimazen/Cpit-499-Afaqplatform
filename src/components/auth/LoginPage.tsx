@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Mail, Lock, UserCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -7,10 +8,11 @@ import { Card } from '../ui/card';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string, isGuest?: boolean) => void;
-  onNavigate: (page: 'signup' | 'home') => void;
+  onNavigate?: (page: string) => void;
 }
 
 export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -72,8 +74,8 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
               تسجيل الدخول
@@ -89,7 +91,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
             </div>
           </div>
 
-          <Button 
+          <Button
             type="button"
             variant="outline"
             className="w-full"
@@ -103,7 +105,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
             <p className="text-gray-600">
               ليس لديك حساب؟{' '}
               <button
-                onClick={() => onNavigate('signup')}
+                onClick={() => navigate('/signup')}
                 className="text-purple-600 hover:text-purple-700"
               >
                 سجل الآن
@@ -114,7 +116,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
 
         <div className="mt-4 text-center">
           <button
-            onClick={() => onNavigate('home')}
+            onClick={() => navigate('/landing')}
             className="text-gray-600 hover:text-gray-800"
           >
             → العودة للصفحة الرئيسية

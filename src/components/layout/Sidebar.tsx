@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { X, Home, BarChart3, LogOut, GraduationCap, Award, Users } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { StudyPlan } from '../../App';
@@ -6,13 +7,13 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   currentPage: string;
-  onNavigate: (page: any) => void;
   user: any;
   onLogout: () => void;
   studyPlans: StudyPlan[];
 }
 
-export function Sidebar({ isOpen, onClose, currentPage, onNavigate, user, onLogout, studyPlans }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPlans }: SidebarProps) {
+  const navigate = useNavigate();
   const menuItems = [
     { id: 'home', label: 'الرئيسية', icon: Home },
     { id: 'friends', label: 'الأصدقاء', icon: Users },
@@ -33,9 +34,8 @@ export function Sidebar({ isOpen, onClose, currentPage, onNavigate, user, onLogo
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 right-0 h-full w-64 bg-white border-l shadow-lg z-50 transform transition-transform duration-300 ${
-          isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed top-0 right-0 h-full w-64 bg-white border-l shadow-lg z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+          }`}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
@@ -73,14 +73,13 @@ export function Sidebar({ isOpen, onClose, currentPage, onNavigate, user, onLogo
                 <button
                   key={item.id}
                   onClick={() => {
-                    onNavigate(item.id);
+                    navigate(`/${item.id}`);
                     onClose();
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
                       ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
                       : 'hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                   <span>{item.label}</span>
@@ -91,14 +90,13 @@ export function Sidebar({ isOpen, onClose, currentPage, onNavigate, user, onLogo
             {hasCompletedPlans && (
               <button
                 onClick={() => {
-                  onNavigate('final-exam');
+                  navigate('/final-exam/:planId');
                   onClose();
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  currentPage === 'final-exam'
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentPage === 'final-exam'
                     ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
                     : 'bg-gradient-to-r from-green-50 to-blue-50 hover:from-green-100 hover:to-blue-100'
-                }`}
+                  }`}
               >
                 <Award className="w-5 h-5" />
                 <span>الاختبار النهائي</span>
