@@ -14,6 +14,7 @@ import { QuizInterface } from './components/quiz/QuizInterface';
 import { FinalExam } from './components/exam/FinalExam';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { Sidebar } from './components/layout/Sidebar';
+import { generatePlan, isAiApiConfigured } from './services/aiApi';
 
 export interface User {
   id: string;
@@ -92,12 +93,42 @@ export default function App() {
     navigate('/preferences');
   };
 
-  const handlePreferencesComplete = (preferences: StudyPreferencesData) => {
+  const handlePreferencesComplete = async (preferences: StudyPreferencesData) => {
     const levelTitles = {
       beginner: 'خطة دراسية للمستوى المبتدئ',
       intermediate: 'خطة دراسية للمستوى المتوسط',
       advanced: 'خطة دراسية للمستوى المتقدم'
     };
+
+    if (isAiApiConfigured()) {
+      const aiPlans = await generatePlan({
+        level: diagnosticLevel,
+        preferences: {
+          dailyStudyTime: preferences.dailyStudyTime,
+          studyDuration: preferences.studyDuration,
+          studyDays: preferences.studyDays,
+          preferredTime: preferences.preferredTime,
+          goals: preferences.goals,
+          intensity: preferences.intensity,
+        },
+      });
+      if (aiPlans && aiPlans.length > 0) {
+        const mapped: StudyPlan[] = aiPlans.map((p) => ({
+          id: p.id,
+          title: p.title,
+          level: p.level,
+          status: p.status,
+          completionPercentage: p.completionPercentage,
+          completedModules: p.completedModules || [],
+          quizScores: p.quizScores || {},
+          createdAt: new Date(p.createdAt),
+        }));
+        setStudyPlans((prev) => [...prev, ...mapped]);
+        setDiagnosticLevel('');
+        navigate('/home');
+        return;
+      }
+    }
 
     const newPlan: StudyPlan = {
       id: `plan-${Date.now()}`,

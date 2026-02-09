@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Brain, CheckCircle, Circle, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
+import { generateQuiz } from '../../services/aiApi';
 
 interface DiagnosticTestProps {
   onComplete: (level: string) => void;
@@ -10,49 +11,69 @@ interface DiagnosticTestProps {
   onCancel?: () => void;
 }
 
-const questions = [
-  {
-    id: 1,
-    subject: 'الرياضيات',
-    question: 'ما هي مشتقة الدالة f(x) = 3x² + 2x + 1؟',
-    options: ['6x + 2', '3x + 2', '6x² + 2x', '3x² + 2'],
-    correctAnswer: 0
-  },
-  {
-    id: 2,
-    subject: 'الفيزياء',
-    question: 'ما هي وحدة القوة في النظام الدولي؟',
-    options: ['جول', 'نيوتن', 'واط', 'باسكال'],
-    correctAnswer: 1
-  },
-  {
-    id: 3,
-    subject: 'الكيمياء',
-    question: 'ما هو العدد الذري للكربون؟',
-    options: ['4', '6', '8', '12'],
-    correctAnswer: 1
-  },
-  {
-    id: 4,
-    subject: 'الأحياء',
-    question: 'ما هي الوحدة الأساسية للحياة؟',
-    options: ['النواة', 'الخلية', 'العضو', 'النسيج'],
-    correctAnswer: 1
-  },
-  {
-    id: 5,
-    subject: 'الرياضيات',
-    question: 'حل المعادلة: 2x + 5 = 15',
-    options: ['5', '10', '7.5', '20'],
-    correctAnswer: 0
-  }
-];
+interface DiagnosticQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  subject?: string;
+}
 
 export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTestProps) {
+  const [questions, setQuestions] = useState<DiagnosticQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      const quiz = await generateQuiz('diagnostic');
+      if (!active) return;
+      if (quiz && Array.isArray(quiz.questions) && quiz.questions.length > 0) {
+        setQuestions(quiz.questions);
+      } else {
+        setError('تعذر تحميل أسئلة التقييم التشخيصي. حاول مرة أخرى لاحقاً.');
+      }
+      setLoading(false);
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
+            <Brain className="w-5 h-5 text-purple-600" />
+            <span className="text-purple-700">جاري تحميل أسئلة التقييم التشخيصي...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center">
+          <p className="text-red-600 mb-4">{error || 'لا توجد أسئلة متاحة حالياً.'}</p>
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel}>
+              الرجوع
+            </Button>
+          )}
+        </Card>
+      </div>
+    );
+  }
 
   const progress = ((currentQuestion + 1) / questions.length) * 100;
 
@@ -75,7 +96,9 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
   };
 
   const calculateLevel = () => {
-    const correctAnswers = answers.filter((answer, index) => answer === questions[index].correctAnswer).length;
+    const correctAnswers = answers.filter(
+      (answer, index) => answer === questions[index].correctAnswer
+    ).length;
     const percentage = (correctAnswers / questions.length) * 100;
 
     if (percentage >= 80) return 'advanced';
@@ -89,12 +112,15 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
   };
 
   if (showResults) {
-    const correctAnswers = answers.filter((answer, index) => answer === questions[index].correctAnswer).length;
+    const correctAnswers = answers.filter(
+      (answer, index) => answer === questions[index].correctAnswer
+    ).length;
     const percentage = (correctAnswers / questions.length) * 100;
     const level = calculateLevel();
-    
-    const levelArabic = level === 'advanced' ? 'متقدم' : level === 'intermediate' ? 'متوسط' : 'مبتدئ';
-    
+
+    const levelArabic =
+      level === 'advanced' ? 'متقدم' : level === 'intermediate' ? 'متوسط' : 'مبتدئ';
+
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="max-w-2xl w-full p-8 shadow-xl">
@@ -102,15 +128,17 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
             <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-12 h-12 text-white" />
             </div>
-            
+
             <h2 className="text-3xl mb-4">اكتمل التقييم!</h2>
             <p className="text-gray-600 mb-8">أحسنت في إكمال الاختبار التشخيصي، {userName}!</p>
-            
+
             <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 mb-8">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <p className="text-gray-600 mb-1">النتيجة</p>
-                  <p className="text-3xl">{correctAnswers}/{questions.length}</p>
+                  <p className="text-3xl">
+                    {correctAnswers}/{questions.length}
+                  </p>
                 </div>
                 <div>
                   <p className="text-gray-600 mb-1">النسبة المئوية</p>
@@ -122,7 +150,7 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
                 </div>
               </div>
             </div>
-            
+
             <div className="text-right mb-8">
               <h3 className="text-xl mb-4">ما التالي؟</h3>
               <ul className="space-y-2 text-gray-600">
@@ -140,8 +168,8 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
                 </li>
               </ul>
             </div>
-            
-            <Button 
+
+            <Button
               onClick={handleComplete}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
@@ -172,7 +200,9 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
         {/* Progress */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600">السؤال {currentQuestion + 1} من {questions.length}</span>
+            <span className="text-gray-600">
+              السؤال {currentQuestion + 1} من {questions.length}
+            </span>
             <span className="text-gray-600">{progress.toFixed(0)}% مكتمل</span>
           </div>
           <Progress value={progress} className="h-2" />
@@ -182,7 +212,7 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
         <Card className="p-8 shadow-xl">
           <div className="mb-6">
             <span className="inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm mb-4">
-              {question.subject}
+              {question.subject || 'سؤال تشخيصي'}
             </span>
             <h2 className="text-2xl">{question.question}</h2>
           </div>
@@ -221,3 +251,4 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     </div>
   );
 }
+
