@@ -6,8 +6,11 @@
   export default defineConfig({
     plugins: [react()],
     resolve: {
-      extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
-      alias: {
+        extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
+        alias: {
+          // Force single React copy to avoid "Invalid hook call" errors
+          react: path.resolve(__dirname, 'node_modules/react'),
+          'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
         'vaul@1.1.2': 'vaul',
         'sonner@2.0.3': 'sonner',
         'recharts@2.15.2': 'recharts',
