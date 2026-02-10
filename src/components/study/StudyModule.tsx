@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Menu, ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
 import { LessonFlashcards } from './LessonFlashcards';
 import { QuickQuestionPopup } from './QuickQuestionPopup';
+import {
+  getModuleContent,
+  isAiApiConfigured,
+  type ModuleContentResponse,
+  type QuickQuestionItem,
+} from '../../services/aiApi';
 
 interface StudyModuleProps {
   moduleId: string;
@@ -13,189 +19,78 @@ interface StudyModuleProps {
   onToggleSidebar: () => void;
 }
 
-// Quick questions that appear after certain slides
-const quickQuestions: { [key: string]: { [slideIndex: number]: any } } = {
-  'math-1': {
-    1: {
-      question: 'ما هي الصيغة القياسية للمعادلة التربيعية؟',
-      options: [
-        'ax + b = 0',
-        'ax² + bx + c = 0',
-        'ax³ + bx² + c = 0',
-        'a + bx + c = 0'
-      ],
-      correctAnswer: 1,
-      explanation: 'الصيغة القياسية للمعادلة التربيعية هي ax² + bx + c = 0، حيث a ≠ 0. هذه معادلة من الدرجة الثانية.'
-    },
-    3: {
-      question: 'عند التحليل إلى عوامل لـ x² + 5x + 6، ما هو الحل الصحيح؟',
-      options: [
-        '(x + 1)(x + 6)',
-        '(x + 2)(x + 3)',
-        '(x - 2)(x - 3)',
-        '(x + 5)(x + 1)'
-      ],
-      correctAnswer: 1,
-      explanation: 'نبحث عن رقمين حاصل ضربهما 6 ومجموعهما 5، وهما 2 و 3. لذلك: x² + 5x + 6 = (x + 2)(x + 3)'
-    }
-  },
-  'physics-1': {
-    1: {
-      question: 'أي من قوانين نيوتن يُعرف بقانون القصور الذاتي؟',
-      options: [
-        'القانون الأول',
-        'القانون الثاني',
-        'القانون الثالث',
-        'جميع القوانين'
-      ],
-      correctAnswer: 0,
-      explanation: 'القانون الأول لنيوتن يُعرف بقانون القصور الذاتي، وينص على أن الجسم يبقى في حالة السكون أو الحركة المنتظمة ما لم تؤثر عليه قوة خارجية.'
-    },
-    2: {
-      question: 'إذا كانت القوة = 50 نيوتن والكتلة = 10 كجم، ما التسارع؟',
-      options: [
-        '5 m/s²',
-        '10 m/s²',
-        '50 m/s²',
-        '500 m/s²'
-      ],
-      correctAnswer: 0,
-      explanation: 'باستخدام قانون نيوتن الثاني: F = ma، نجد أن a = F/m = 50/10 = 5 m/s²'
-    }
-  }
-};
-
-const moduleContent: { [key: string]: any } = {
-  'math-1': {
-    title: 'الجبر المتقدم',
-    slides: [
-      {
-        title: 'مقدمة في المعادلات التربيعية',
-        content: 'المعادلة التربيعية هي معادلة متعددة حدود من الدرجة الثانية. الصيغة القياسية هي ax² + bx + c = 0، حيث a ≠ 0.',
-        example: 'مثال: 2x² + 5x - 3 = 0',
-        keyPoints: [
-          'أعلى قوة للمتغير هي 2',
-          'يمكن أن يكون لها 0 أو 1 أو 2 من الحلول الحقيقية',
-          'الرسم البياني يشكل قطعًا مكافئًا'
-        ]
-      },
-      {
-        title: 'الحل بطريقة التحليل إلى عوامل',
-        content: 'التحليل إلى عوامل هو إحدى طرق حل المعادلات التربيعية. نعبر عن المعادلة كحاصل ضرب عوامل يساوي صفر.',
-        example: 'x² + 5x + 6 = 0 ← (x + 2)(x + 3) = 0 ← x = -2 أو x = -3',
-        keyPoints: [
-          'ابحث عن رقمين حاصل ضربهما يساوي c ومجموعهما يساوي b',
-          'اجعل كل عامل يساوي صفر',
-          'حل من أجل x'
-        ]
-      },
-      {
-        title: 'قانون الصيغة التربيعية',
-        content: 'قانون الصيغة التربيعية يوفر حلاً لأي معادلة تربيعية: x = (-b ± √(b² - 4ac)) / (2a)',
-        example: 'لـ 2x² + 3x - 2 = 0: x = (-3 ± √(9 + 16)) / 4 = (-3 ± 5) / 4',
-        keyPoints: [
-          'يعمل لجميع المعادلات التربيعية',
-          'المميز (b² - 4ac) يحدد عدد الحلول',
-          'إذا كان المميز > 0: حلان حقيقيان'
-        ]
-      },
-      {
-        title: 'مسائل تطبيقية',
-        content: 'دعونا نطبق ما تعلمناه بمسائل تطبيقية.',
-        example: 'حاول حل: x² - 7x + 12 = 0',
-        keyPoints: [
-          'حدد قيم a و b و c',
-          'اختر طريقتك (التحليل أو القانون)',
-          'تحقق من حلولك بالتعويض'
-        ]
-      }
-    ]
-  },
-  'physics-1': {
-    title: 'قوىين نيوتن',
-    slides: [
-      {
-        title: 'مقدمة في قوانين نيوتن',
-        content: 'صاغ السير إسحاق نيوتن ثلاثة قوانين أساسية تصف العلاقة بين الحركة والقوى.',
-        example: 'هذه القوانين تشكل أساس الميكانيكا الكلاسيكية',
-        keyPoints: [
-          'القانون الأول: قانون القصور الذاتي',
-          'القانون الثاني: F = ma',
-          'القانون الثالث: الفعل ورد الفعل'
-        ]
-      },
-      {
-        title: 'قانون نيوتن الأول',
-        content: 'الجسم الساكن يبقى ساكنًا، والجسم المتحرك يبقى متحركًا بسرعة ثابتة، ما لم تؤثر عليه قوة خارجية.',
-        example: 'كتاب على طاولة يبقى ثابتًا حتى يدفعه شخص ما',
-        keyPoints: [
-          'يُعرف أيضًا بقانون القصور الذاتي',
-          'الأجسام تقاوم التغيرات في حالة حركتها',
-          'القصور الذاتي يعتمد على الكتلة'
-        ]
-      },
-      {
-        title: 'قانون نيوتن الثاني',
-        content: 'تسارع الجسم يتناسب طرديًا مع القوة المحصلة المؤثرة عليه وعكسيًا مع كتلته. F = ma',
-        example: 'جسم كتلته 10 كجم بقوة 20 نيوتن: a = F/m = 20/10 = 2 m/s²',
-        keyPoints: [
-          'القوة والكتلة والتسارع مرتبطة',
-          'اتجاه التسارع هو نفس اتجاه القوة المحصلة',
-          'وحدة القوة في النظام الدولي هي نيوتن (N)'
-        ]
-      },
-      {
-        title: 'قانون نيوتن الثالث',
-        content: 'لكل فعل رد فعل مساوٍ له في المقدار ومعاكس له في الاتجاه.',
-        example: 'عندما تدفع حائطًا، يدفعك الحائط بقوة مساوية',
-        keyPoints: [
-          'القوى تحدث دائمًا في أزواج',
-          'الفعل ورد الفعل يؤثران على أجسام مختلفة',
-          'متساويان في المقدار، متعاكسان في الاتجاه'
-        ]
-      }
-    ]
-  }
-};
-
-// Generate similar content for other modules
-const defaultSlides = [
-  {
-    title: 'مقدمة',
-    content: 'مرحبًا بك في هذه الوحدة التعليمية. سنستكشف المفاهيم الأساسية خطوة بخطوة.',
-    example: 'استعد للتعلم!',
-    keyPoints: ['محتوى تفاعلي', 'أمثلة حقيقية', 'تمارين تطبيقية']
-  },
-  {
-    title: 'المفاهيم الأساسية',
-    content: 'فهم المبادئ الأساسية أمر بالغ الأهمية للإتقان.',
-    example: 'كل مفهوم يبني على المعرفة السابقة',
-    keyPoints: ['المعرفة التأسيسية', 'التطبيقات العملية', 'التفكير النقدي']
-  },
-  {
-    title: 'موضوعات متقدمة',
-    content: 'الآن دعونا نتعمق أكثر في الجوانب الأكثر تعقيدًا للموضوع.',
-    example: 'تحدى نفسك بمواد متقدمة',
-    keyPoints: ['حل المشكلات المعقدة', 'تكامل المفاهيم', 'التطبيقات في العالم الحقيقي']
-  },
-  {
-    title: 'ملخص وتطبيق',
-    content: 'دعونا نراجع ما تعلمناه ونستعد للاختبار.',
-    example: 'اختبر فهمك',
-    keyPoints: ['النقاط الرئيسية', 'مسائل تطبيقية', 'التقييم الذاتي']
-  }
-];
-
 export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: StudyModuleProps) {
+  const [module, setModule] = useState<ModuleContentResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showQuickQuestion, setShowQuickQuestion] = useState(false);
-  const [questionToShow, setQuestionToShow] = useState<any>(null);
+  const [questionToShow, setQuestionToShow] = useState<(QuickQuestionItem & { explanation: string }) | null>(
+    null
+  );
   
-  const module = moduleContent[moduleId] || { 
-    title: 'وحدة دراسية', 
-    slides: defaultSlides 
-  };
-  
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setModule(null);
+      setCurrentSlide(0);
+      setShowQuickQuestion(false);
+      setQuestionToShow(null);
+
+      if (!isAiApiConfigured()) {
+        setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
+        setLoading(false);
+        return;
+      }
+
+      const data = await getModuleContent(moduleId);
+      if (!active) return;
+      if (data && Array.isArray(data.slides) && data.slides.length > 0) {
+        setModule(data);
+      } else {
+        setError('تعذر تحميل محتوى الوحدة حالياً. حاول مرة أخرى لاحقاً.');
+      }
+      setLoading(false);
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [moduleId, reloadKey]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center" dir="rtl">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
+            <CheckCircle className="w-5 h-5 text-purple-600" />
+            <span className="text-purple-700">جاري تحميل محتوى الوحدة...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !module || !Array.isArray(module.slides) || module.slides.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center" dir="rtl">
+          <p className="text-red-600 mb-4">{error || 'لا يوجد محتوى متاح حالياً.'}</p>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="outline" onClick={onBack}>
+              الرجوع
+            </Button>
+            <Button onClick={() => setReloadKey((v) => v + 1)}>إعادة المحاولة</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   const slides = module.slides;
   const progress = ((currentSlide + 1) / slides.length) * 100;
   const slide = slides[currentSlide];
@@ -206,9 +101,10 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
       setCurrentSlide(nextSlide);
       
       // Check if there's a quick question for this slide
-      const moduleQuestions = quickQuestions[moduleId];
-      if (moduleQuestions && moduleQuestions[nextSlide]) {
-        setQuestionToShow(moduleQuestions[nextSlide]);
+      const moduleQuestions = module.quickQuestions;
+      const q = moduleQuestions ? moduleQuestions[nextSlide] : undefined;
+      if (q) {
+        setQuestionToShow({ ...q, explanation: q.explanation ?? '' });
         setShowQuickQuestion(true);
       }
     } else {
@@ -235,7 +131,7 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
           question={questionToShow.question}
           options={questionToShow.options}
           correctAnswer={questionToShow.correctAnswer}
-          explanation={questionToShow.explanation}
+          explanation={questionToShow.explanation || ''}
           onClose={handleCloseQuestion}
           slideNumber={currentSlide + 1}
         />

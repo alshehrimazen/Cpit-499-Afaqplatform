@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Menu, CheckCircle, XCircle, ArrowLeft, Trophy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
+import { generateQuiz, isAiApiConfigured, type GeneratedQuiz } from '../../services/aiApi';
 
 interface QuizInterfaceProps {
   moduleId: string;
@@ -10,107 +11,76 @@ interface QuizInterfaceProps {
   onToggleSidebar: () => void;
 }
 
-const quizData: { [key: string]: any } = {
-  'math-1': {
-    title: 'اختبار الجبر المتقدم',
-    questions: [
-      {
-        question: 'ما هي الصيغة القياسية للمعادلة التربيعية؟',
-        options: ['ax + b = 0', 'ax² + bx + c = 0', 'ax³ + bx² + c = 0', 'ax² = c'],
-        correctAnswer: 1
-      },
-      {
-        question: 'حل: x² - 5x + 6 = 0',
-        options: ['x = 2 أو x = 3', 'x = 1 أو x = 6', 'x = -2 أو x = -3', 'x = 5 أو x = 6'],
-        correctAnswer: 0
-      },
-      {
-        question: 'ماذا يخبرنا المميز (b² - 4ac)؟',
-        options: ['قيمة x', 'عدد الحلول', 'قيمة a', 'الميل'],
-        correctAnswer: 1
-      },
-      {
-        question: 'إذا كان المميز سالبًا، كم عدد الحلول الحقيقية الموجودة؟',
-        options: ['صفر', 'واحد', 'اثنان', 'ثلاثة'],
-        correctAnswer: 0
-      },
-      {
-        question: 'حلل إلى عوامل: x² + 7x + 12',
-        options: ['(x + 3)(x + 4)', '(x + 2)(x + 6)', '(x + 1)(x + 12)', '(x + 3)(x + 5)'],
-        correctAnswer: 0
-      }
-    ]
-  },
-  'physics-1': {
-    title: 'اختبار قوانين نيوتن',
-    questions: [
-      {
-        question: 'ما الاسم الآخر لقانون نيوتن الأول؟',
-        options: ['قانون الفعل', 'قانون القصور الذاتي', 'قانون القوة', 'قانون الحركة'],
-        correctAnswer: 1
-      },
-      {
-        question: 'وفقًا لـ F = ma، إذا تضاعفت القوة والكتلة ثابتة، فإن التسارع:',
-        options: ['ينصف', 'يبقى كما هو', 'يتضاعف', 'يتضاعف أربع مرات'],
-        correctAnswer: 2
-      },
-      {
-        question: 'ينص قانون نيوتن الثالث على أن القوى تحدث في:',
-        options: ['فردي', 'أزواج', 'ثلاثيات', 'مجموعات'],
-        correctAnswer: 1
-      },
-      {
-        question: 'ما هي وحدة القوة في النظام الدولي؟',
-        options: ['جول', 'واط', 'نيوتن', 'باسكال'],
-        correctAnswer: 2
-      },
-      {
-        question: 'جسم كتلته 5 كجم يتسارع بمعدل 2 م/ث². ما هي القوة المحصلة؟',
-        options: ['2.5 نيوتن', '7 نيوتن', '10 نيوتن', '3 نيوتن'],
-        correctAnswer: 2
-      }
-    ]
-  }
-};
-
-const defaultQuiz = {
-  title: 'اختبار الوحدة',
-  questions: [
-    {
-      question: 'ما هو المفهوم الرئيسي الذي يغطيه هذه الوحدة؟',
-      options: ['المبادئ الأساسية', 'التطبيقات المتقدمة', 'كل من الأساسية والمتقدمة', 'لا شيء'],
-      correctAnswer: 2
-    },
-    {
-      question: 'ما هو النهج الأكثر فعالية للتعلم؟',
-      options: ['القراءة السلبية', 'التدريب النشط', 'الحفظ فقط', 'تخطي الأمثلة'],
-      correctAnswer: 1
-    },
-    {
-      question: 'كيف ترتبط المفاهيم في هذه الوحدة؟',
-      options: ['لا ترتبط', 'بناء تسلسلي', 'عشوائيًا', 'بترتيب عكسي'],
-      correctAnswer: 1
-    },
-    {
-      question: 'ما هي أفضل طريقة للتحقق من الفهم؟',
-      options: ['مسائل تطبيقية', 'القراءة فقط', 'التخمين', 'التخطي'],
-      correctAnswer: 0
-    },
-    {
-      question: 'لماذا الأمثلة مهمة؟',
-      options: ['ليست مهمة', 'توضح المفاهيم', 'تربك', 'تضيع الوقت'],
-      correctAnswer: 1
-    }
-  ]
-};
-
 export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInterfaceProps) {
-  const quiz = quizData[moduleId] || defaultQuiz;
+  const [quiz, setQuiz] = useState<GeneratedQuiz | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [answers, setAnswers] = useState<number[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showResults, setShowResults] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setQuiz(null);
+      setCurrentQuestion(0);
+      setSelectedAnswer(null);
+      setAnswers([]);
+      setShowFeedback(false);
+      setShowResults(false);
+
+      if (!isAiApiConfigured()) {
+        setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
+        setLoading(false);
+        return;
+      }
+
+      const q = await generateQuiz(moduleId);
+      if (!active) return;
+
+      if (q && Array.isArray(q.questions) && q.questions.length > 0) {
+        setQuiz(q);
+      } else {
+        setError('تعذر تحميل أسئلة الاختبار حالياً. حاول مرة أخرى لاحقاً.');
+      }
+
+      setLoading(false);
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [moduleId, reloadKey]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center" dir="rtl">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
+            <Trophy className="w-5 h-5 text-purple-600" />
+            <span className="text-purple-700">جاري إعداد الاختبار...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center" dir="rtl">
+          <p className="text-red-600 mb-4">{error || 'لا توجد أسئلة متاحة حالياً.'}</p>
+          <Button onClick={() => setReloadKey((v) => v + 1)}>إعادة المحاولة</Button>
+        </Card>
+      </div>
+    );
+  }
 
   const question = quiz.questions[currentQuestion];
   const progress = ((currentQuestion + 1) / quiz.questions.length) * 100;
@@ -192,7 +162,7 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
               <div className="text-right mb-8">
                 <h3 className="text-xl mb-4">ملخص الأداء</h3>
                 <div className="space-y-3">
-                  {quiz.questions.map((q: any, index: number) => {
+                  {quiz.questions.map((q, index: number) => {
                     const isCorrect = answers[index] === q.correctAnswer;
                     return (
                       <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">

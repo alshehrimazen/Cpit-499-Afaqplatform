@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle, XCircle, Trophy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
+import { generateQuiz, isAiApiConfigured, type QuizQuestion } from '../../services/aiApi';
 
 interface LessonQuizProps {
   lessonTitle: string;
@@ -18,46 +19,90 @@ interface Question {
   explanation: string;
 }
 
-const quizQuestions: Question[] = [
-  {
-    id: '1',
-    question: 'ما هو الفرق المشترك في المتسلسلة الحسابية: 3، 7، 11، 15؟',
-    options: ['2', '3', '4', '5'],
-    correctAnswer: 2,
-    explanation: 'الفرق المشترك يُحسب بطرح حدين متتاليين: 7 - 3 = 4'
-  },
-  {
-    id: '2',
-    question: 'إذا كانت احتمالية المطر 0.3، ما احتمالية عدم هطول المطر؟',
-    options: ['0.3', '0.5', '0.7', '1.0'],
-    correctAnswer: 2,
-    explanation: 'احتمالية عدم حدوث الحدث = 1 - احتمالية الحدث = 1 - 0.3 = 0.7'
-  },
-  {
-    id: '3',
-    question: 'سيارة قطعت 120 كم في ساعتين. ما هو متوسط سرعتها؟',
-    options: ['40 كم/س', '50 كم/س', '60 كم/س', '80 كم/س'],
-    correctAnswer: 2,
-    explanation: 'السرعة = المسافة ÷ الزمن = 120 كم ÷ 2 ساعة = 60 كم/س'
-  },
-  {
-    id: '4',
-    question: 'أي كلمة هي الأقرب في المعنى لـ "abundant"؟',
-    options: ['Scarce', 'Plentiful', 'Rare', 'Limited'],
-    correctAnswer: 1,
-    explanation: 'كلمة Abundant و Plentiful تعنيان الوفرة أو الكثرة'
-  }
-];
-
 export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps) {
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [correctAnswers, setCorrectAnswers] = useState(0);
   const [quizComplete, setQuizComplete] = useState(false);
 
-  const question = quizQuestions[currentQuestion];
-  const progress = ((currentQuestion + 1) / quizQuestions.length) * 100;
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setQuestions([]);
+      setCurrentQuestion(0);
+      setSelectedAnswer(null);
+      setShowFeedback(false);
+      setCorrectAnswers(0);
+      setQuizComplete(false);
+
+      if (!isAiApiConfigured()) {
+        setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
+        setLoading(false);
+        return;
+      }
+
+      // Reuse quiz generator: moduleId fixed, lessonTitle as topic
+      const quiz = await generateQuiz('lesson', lessonTitle);
+      if (!active) return;
+
+      if (quiz && Array.isArray(quiz.questions) && quiz.questions.length > 0) {
+        const mapped: Question[] = quiz.questions.map((q: QuizQuestion, idx: number) => ({
+          id: String(idx + 1),
+          question: q.question,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          explanation: '',
+        }));
+        setQuestions(mapped);
+      } else {
+        setError('تعذر تحميل أسئلة هذا الدرس حالياً. حاول مرة أخرى لاحقاً.');
+      }
+      setLoading(false);
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [lessonTitle, reloadKey]);
+
+  const total = questions.length;
+  const question = questions[currentQuestion];
+  const progress = total > 0 ? ((currentQuestion + 1) / total) * 100 : 0;
+
+  const emptyExplanation = useMemo(() => 'لا يوجد شرح متاح حالياً.', []);
+
+  if (loading) {
+    return (
+      <Card className="p-8 max-w-3xl mx-auto text-center" dir="rtl">
+        <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
+          <Trophy className="w-5 h-5 text-purple-600" />
+          <span className="text-purple-700">جاري إعداد اختبار الدرس...</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (error || total === 0 || !question) {
+    return (
+      <Card className="p-8 max-w-3xl mx-auto text-center" dir="rtl">
+        <p className="text-red-600 mb-4">{error || 'لا توجد أسئلة متاحة حالياً.'}</p>
+        <div className="flex gap-3 justify-center">
+          <Button variant="outline" onClick={onBack}>
+            الرجوع
+          </Button>
+          <Button onClick={() => setReloadKey((v) => v + 1)}>إعادة المحاولة</Button>
+        </div>
+      </Card>
+    );
+  }
 
   const handleSelectAnswer = (index: number) => {
     if (!showFeedback) {
@@ -75,7 +120,7 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
   };
 
   const handleNextQuestion = () => {
-    if (currentQuestion < quizQuestions.length - 1) {
+    if (currentQuestion < total - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
       setShowFeedback(false);
@@ -85,12 +130,12 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
   };
 
   const handleFinishQuiz = () => {
-    const score = Math.round((correctAnswers / quizQuestions.length) * 100);
+    const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
     onComplete(score);
   };
 
   if (quizComplete) {
-    const score = Math.round((correctAnswers / quizQuestions.length) * 100);
+    const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
     const passed = score >= 70;
 
     return (
@@ -109,7 +154,7 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
             {passed ? 'عمل ممتاز!' : 'استمر في التدريب!'}
           </h2>
           <p className="text-gray-600 mb-6">
-            لقد أجبت بشكل صحيح على {correctAnswers} من {quizQuestions.length} أسئلة
+            لقد أجبت بشكل صحيح على {correctAnswers} من {total} أسئلة
           </p>
           <div className="bg-gray-100 rounded-lg p-6 mb-8">
             <p className="text-5xl mb-2">{score}%</p>
@@ -155,7 +200,7 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-2xl">اختبار: {lessonTitle}</h2>
             <span className="text-gray-600">
-              سؤال {currentQuestion + 1} من {quizQuestions.length}
+              سؤال {currentQuestion + 1} من {total}
             </span>
           </div>
           <Progress value={progress} className="h-2" />
@@ -223,7 +268,7 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
                 <p className={`mb-2 ${isCorrect ? 'text-green-900' : 'text-orange-900'}`}>
                   {isCorrect ? 'صحيح!' : 'ليس تماماً'}
                 </p>
-                <p className="text-sm text-gray-700">{question.explanation}</p>
+                <p className="text-sm text-gray-700">{question.explanation || emptyExplanation}</p>
               </div>
             </div>
           </div>
@@ -246,7 +291,7 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
               onClick={handleNextQuestion}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
-              {currentQuestion < quizQuestions.length - 1 ? 'السؤال التالي' : 'إنهاء الاختبار'}
+              {currentQuestion < total - 1 ? 'السؤال التالي' : 'إنهاء الاختبار'}
             </Button>
           )}
         </div>

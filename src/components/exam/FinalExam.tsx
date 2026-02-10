@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Menu, Trophy, Award, Star, ArrowLeft } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
 import type { StudyPlan } from '../../App';
+import { generateFinalExam, isAiApiConfigured, type FinalExamQuestion } from '../../services/aiApi';
 
 interface FinalExamProps {
   plan: StudyPlan;
@@ -11,82 +12,59 @@ interface FinalExamProps {
   onToggleSidebar: () => void;
 }
 
-const finalExamQuestions = [
-  {
-    subject: 'الرياضيات',
-    question: 'حل المعادلة: 3x² - 12x + 9 = 0',
-    options: ['x = 1 أو x = 3', 'x = 2 أو x = 4', 'x = 1 أو x = 2', 'x = 3 أو x = 4'],
-    correctAnswer: 0
-  },
-  {
-    subject: 'الفيزياء',
-    question: 'جسم كتلته 10 كجم دُفع بقوة 30 نيوتن. ما هو تسارعه؟',
-    options: ['2 م/ث²', '3 م/ث²', '4 م/ث²', '5 م/ث²'],
-    correctAnswer: 1
-  },
-  {
-    subject: 'الكيمياء',
-    question: 'ما نوع الرابطة التي تتكون عند مشاركة الإلكترونات؟',
-    options: ['أيونية', 'تساهمية', 'فلزية', 'هيدروجينية'],
-    correctAnswer: 1
-  },
-  {
-    subject: 'اللغة الإنجليزية',
-    question: 'أي جملة صحيحة نحوياً؟',
-    options: [
-      'She don\'t like pizza',
-      'She doesn\'t likes pizza',
-      'She doesn\'t like pizza',
-      'She not like pizza'
-    ],
-    correctAnswer: 2
-  },
-  {
-    subject: 'الأحياء',
-    question: 'ما هو مركز الطاقة في الخلية؟',
-    options: ['النواة', 'الميتوكوندريا', 'الريبوسوم', 'جهاز جولجي'],
-    correctAnswer: 1
-  },
-  {
-    subject: 'الرياضيات',
-    question: 'ما هي القيمة التقريبية لـ π (باي)؟',
-    options: ['3.14', '2.71', '1.41', '1.73'],
-    correctAnswer: 0
-  },
-  {
-    subject: 'الفيزياء',
-    question: 'ما هي وحدة الطاقة؟',
-    options: ['نيوتن', 'جول', 'واط', 'باسكال'],
-    correctAnswer: 1
-  },
-  {
-    subject: 'الكيمياء',
-    question: 'ما هو الاسم الشائع لـ H₂O؟',
-    options: ['الأكسجين', 'الهيدروجين', 'الماء', 'ثاني أكسيد الكربون'],
-    correctAnswer: 2
-  },
-  {
-    subject: 'اللغة الإنجليزية',
-    question: 'ما هو جمع كلمة "child"؟',
-    options: ['Childs', 'Children', 'Childes', 'Childrens'],
-    correctAnswer: 1
-  },
-  {
-    subject: 'الأحياء',
-    question: 'كم عدد الكروموسومات عند الإنسان؟',
-    options: ['23', '46', '48', '92'],
-    correctAnswer: 1
-  }
-];
-
 export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps) {
   const [started, setStarted] = useState(false);
+  const [questions, setQuestions] = useState<FinalExamQuestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [answers, setAnswers] = useState<number[]>([]);
   const [finished, setFinished] = useState(false);
 
-  const progress = ((currentQuestion + 1) / finalExamQuestions.length) * 100;
+  const progress = questions.length > 0 ? ((currentQuestion + 1) / questions.length) * 100 : 0;
+
+  const subjectsLabel = useMemo(() => {
+    const subjects = Array.from(new Set(questions.map((q) => q.subject).filter(Boolean)));
+    if (subjects.length === 0) return 'سيتم تحديدها تلقائياً';
+    return subjects.join('، ');
+  }, [questions]);
+
+  useEffect(() => {
+    if (!started) return;
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setQuestions([]);
+      setCurrentQuestion(0);
+      setSelectedAnswer(null);
+      setAnswers([]);
+      setFinished(false);
+
+      if (!isAiApiConfigured()) {
+        setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
+        setLoading(false);
+        return;
+      }
+
+      const q = await generateFinalExam(plan.id, plan.level);
+      if (!active) return;
+
+      if (q && Array.isArray(q) && q.length > 0) {
+        setQuestions(q);
+      } else {
+        setError('تعذر إنشاء أسئلة الاختبار النهائي حالياً. حاول مرة أخرى لاحقاً.');
+      }
+      setLoading(false);
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [started, reloadKey, plan.id, plan.level]);
 
   const handleStart = () => {
     setStarted(true);
@@ -102,7 +80,7 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
     const newAnswers = [...answers, selectedAnswer];
     setAnswers(newAnswers);
 
-    if (currentQuestion < finalExamQuestions.length - 1) {
+    if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
     } else {
@@ -112,9 +90,9 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
 
   const calculateResults = () => {
     const correctAnswers = answers.filter((answer, index) => 
-      answer === finalExamQuestions[index].correctAnswer
+      answer === questions[index]?.correctAnswer
     ).length;
-    const score = Math.round((correctAnswers / finalExamQuestions.length) * 100);
+    const score = questions.length > 0 ? Math.round((correctAnswers / questions.length) * 100) : 0;
     const passed = score >= 70;
     
     return { correctAnswers, score, passed };
@@ -181,7 +159,7 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
                   </div>
                   <div>
                     <p className="text-gray-600 mb-2">الإجابات الصحيحة</p>
-                    <p className="text-5xl">{correctAnswers}/{finalExamQuestions.length}</p>
+                    <p className="text-5xl">{correctAnswers}/{questions.length}</p>
                   </div>
                   <div>
                     <p className="text-gray-600 mb-2">الحالة</p>
@@ -259,11 +237,11 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
                 <h3 className="text-xl mb-4">معلومات الاختبار</h3>
                 <ul className="space-y-3 text-gray-700">
                   <li className="flex items-start gap-2">
-                    <span><strong>الأسئلة:</strong> {finalExamQuestions.length} سؤال شامل</span>
+                    <span><strong>الأسئلة:</strong> سيتم توليدها عند البدء</span>
                     <span className="text-blue-600">•</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span><strong>المواد:</strong> الرياضيات، الفيزياء، الكيمياء، الإنجليزية، الأحياء</span>
+                    <span><strong>المواد:</strong> {subjectsLabel}</span>
                     <span className="text-blue-600">•</span>
                   </li>
                   <li className="flex items-start gap-2">
@@ -302,7 +280,36 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
     );
   }
 
-  const question = finalExamQuestions[currentQuestion];
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" dir="rtl">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
+            <Trophy className="w-5 h-5 text-purple-600" />
+            <span className="text-purple-700">جاري إعداد الاختبار النهائي...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" dir="rtl">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center">
+          <p className="text-red-600 mb-4">{error || 'لا توجد أسئلة متاحة حالياً.'}</p>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="outline" onClick={() => setStarted(false)}>
+              رجوع
+            </Button>
+            <Button onClick={() => setReloadKey((v) => v + 1)}>إعادة المحاولة</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const question = questions[currentQuestion];
 
   return (
     <div className="min-h-screen" dir="rtl">
@@ -319,7 +326,7 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
       <div className="p-4 lg:p-8 max-w-4xl mx-auto">
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600">سؤال {currentQuestion + 1} من {finalExamQuestions.length}</span>
+            <span className="text-gray-600">سؤال {currentQuestion + 1} من {questions.length}</span>
             <span className="text-gray-600">{progress.toFixed(0)}% مكتمل</span>
           </div>
           <Progress value={progress} className="h-2" />
@@ -355,7 +362,7 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
           >
             <ArrowLeft className="w-5 h-5 mr-2" />
-            {currentQuestion < finalExamQuestions.length - 1 ? 'السؤال التالي' : 'إنهاء الاختبار'}
+            {currentQuestion < questions.length - 1 ? 'السؤال التالي' : 'إنهاء الاختبار'}
           </Button>
         </Card>
       </div>

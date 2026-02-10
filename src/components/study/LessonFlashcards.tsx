@@ -1,13 +1,8 @@
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { ChevronLeft, ChevronRight, RotateCw, CheckCircle } from 'lucide-react';
-
-interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-}
+import { generateFlashcards, isAiApiConfigured, type FlashcardItem } from '../../services/aiApi';
 
 interface LessonFlashcardsProps {
   moduleId: string;
@@ -16,76 +11,75 @@ interface LessonFlashcardsProps {
   onToggleSidebar?: () => void;
 }
 
-// Flashcards for each module
-const moduleFlashcards: { [key: string]: Flashcard[] } = {
-  'math-1': [
-    {
-      id: '1',
-      front: 'ما هي المعادلة التربيعية؟',
-      back: 'معادلة متعددة الحدود من الدرجة الثانية على الصورة ax² + bx + c = 0، حيث a ≠ 0.'
-    },
-    {
-      id: '2',
-      front: 'صيغة المعادلة التربيعية',
-      back: 'x = (-b ± √(b² - 4ac)) / (2a) - تعمل مع جميع المعادلات التربيعية.'
-    },
-    {
-      id: '3',
-      front: 'ما هو المميز؟',
-      back: 'b² - 4ac - يحدد عدد الحلول الحقيقية: >0 (حلان)، =0 (حل واحد)، <0 (لا يوجد حلول).'
-    },
-    {
-      id: '4',
-      front: 'طريقة التحليل إلى عوامل',
-      back: 'عبّر عن المعادلة كحاصل ضرب عوامل يساوي صفراً، ثم حل كل عامل بشكل منفصل.'
-    }
-  ],
-  'physics-1': [
-    {
-      id: '1',
-      front: 'قانون نيوتن الأول',
-      back: 'قانون القصور الذاتي: الجسم الساكن يبقى ساكناً، والجسم المتحرك يبقى متحركاً بسرعة ثابتة، ما لم تؤثر عليه قوة خارجية.'
-    },
-    {
-      id: '2',
-      front: 'قانون نيوتن الثاني',
-      back: 'F = ma - تسارع الجسم يتناسب طردياً مع القوة المحصلة وعكسياً مع الكتلة.'
-    },
-    {
-      id: '3',
-      front: 'قانون نيوتن الثالث',
-      back: 'لكل فعل رد فعل مساوٍ له في المقدار ومعاكس له في الاتجاه. القوى تحدث دائماً في أزواج.'
-    },
-    {
-      id: '4',
-      front: 'ما هو القصور الذاتي؟',
-      back: 'ميل الجسم لمقاومة التغيرات في حالة حركته. كتلة أكبر = قصور ذاتي أكبر.'
-    }
-  ]
-};
-
-const defaultFlashcards: Flashcard[] = [
-  {
-    id: '1',
-    front: 'المفهوم الأساسي 1',
-    back: 'هذا هو الشرح للمفهوم الأساسي الأول الذي تم تناوله في هذا الدرس.'
-  },
-  {
-    id: '2',
-    front: 'المفهوم الأساسي 2',
-    back: 'هذا هو الشرح للمفهوم الأساسي الثاني الذي تم تناوله في هذا الدرس.'
-  },
-  {
-    id: '3',
-    front: 'المفهوم الأساسي 3',
-    back: 'هذا هو الشرح للمفهوم الأساسي الثالث الذي تم تناوله في هذا الدرس.'
-  }
-];
-
 export function LessonFlashcards({ moduleId, onComplete, onBack, onToggleSidebar }: LessonFlashcardsProps) {
-  const flashcards = moduleFlashcards[moduleId] || defaultFlashcards;
+  const [flashcards, setFlashcards] = useState<FlashcardItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentCard, setCurrentCard] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setCurrentCard(0);
+      setIsFlipped(false);
+
+      if (!isAiApiConfigured()) {
+        setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
+        setLoading(false);
+        return;
+      }
+
+      const items = await generateFlashcards(moduleId);
+      if (!active) return;
+
+      if (items && Array.isArray(items) && items.length > 0) {
+        setFlashcards(items);
+      } else {
+        setError('تعذر تحميل البطاقات التعليمية حالياً. حاول مرة أخرى لاحقاً.');
+      }
+      setLoading(false);
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [moduleId, reloadKey]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center" dir="rtl">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
+            <CheckCircle className="w-5 h-5 text-purple-600" />
+            <span className="text-purple-700">جاري إنشاء البطاقات التعليمية...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || flashcards.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-xl text-center" dir="rtl">
+          <p className="text-red-600 mb-4">{error || 'لا توجد بطاقات متاحة حالياً.'}</p>
+          <div className="flex items-center justify-center gap-3">
+            {onBack && (
+              <Button variant="outline" onClick={onBack}>
+                الرجوع
+              </Button>
+            )}
+            <Button onClick={() => setReloadKey((v) => v + 1)}>إعادة المحاولة</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const handleNext = () => {
     if (currentCard < flashcards.length - 1) {
