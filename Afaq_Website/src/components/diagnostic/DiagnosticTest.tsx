@@ -34,6 +34,8 @@ interface QuizResult {
   total_questions: number;
   total_percentage: number;
   performance_by_subject: Performance[];
+  student_profile?: string;
+  curriculum?: any;
 }
 
 // ── Design tokens (mirrors LoginPage exactly) ─────────────────────────────────
@@ -99,7 +101,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     loadQuestions();
   }, []);
 
-  // ── Shared Logo (mirrors LoginPage top logo) ──────────────────────────────
   const Logo = () => (
     <div className="text-center mb-8">
       <div className="inline-flex items-center gap-2 mb-3">
@@ -114,7 +115,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     </div>
   );
 
-  // ── Loading / Submitting ──────────────────────────────────────────────────
   if (loading || submitting) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 rtl" dir="rtl">
@@ -151,7 +151,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     );
   }
 
-  // ── Error ─────────────────────────────────────────────────────────────────
   if (error || questions.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 rtl" dir="rtl">
@@ -172,7 +171,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     );
   }
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleAnswerSelect = (index: number) => setSelectedAnswer(index);
 
   const handleNext = async () => {
@@ -202,8 +200,20 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
           body:    JSON.stringify(submission),
         });
         const result = await res.json();
+
         if (result.status === "success") {
           setQuizResult(result);
+
+          if (result.curriculum) {
+            localStorage.setItem("afaq_curriculum", JSON.stringify(result.curriculum));
+          }
+
+          if (result.student_profile) {
+            localStorage.setItem("afaq_student_profile", result.student_profile);
+          }
+
+          localStorage.setItem("afaq_quiz_result", JSON.stringify(result));
+
           setShowResults(true);
         } else {
           setError("حدث خطأ في التصحيح");
@@ -223,7 +233,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     onComplete(levelStr);
   };
 
-  // ── Results Page ──────────────────────────────────────────────────────────
   if (showResults && quizResult) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 rtl" dir="rtl">
@@ -233,7 +242,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
 
           <Card className="p-8 shadow-xl border-2">
 
-            {/* Header */}
             <div className="text-center mb-8">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-green-50 border-2 border-green-400">
                 <CheckCircle className="w-9 h-9 text-green-500" />
@@ -242,7 +250,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
               <p className="text-gray-600">{userName}، إليك ملخص مستواك:</p>
             </div>
 
-            {/* Total Score */}
             <div className="rounded-xl p-5 mb-5 text-center bg-gray-50 border">
               <div className="flex items-center justify-center gap-2 mb-1">
                 <BarChart3 className="w-5 h-5 text-blue-600" />
@@ -257,7 +264,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
               </p>
             </div>
 
-            {/* Per-subject */}
             <div className="mb-6">
               <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2 border-b pb-2">
                 <GraduationCap className="w-4 h-4 text-purple-600" />
@@ -293,7 +299,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
               </div>
             </div>
 
-            {/* CTA – mirrors login submit button */}
             <Button
               onClick={handleFinish}
               className="w-full py-6 text-base font-bold text-white border-0 flex items-center justify-center gap-2"
@@ -309,7 +314,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     );
   }
 
-  // ── Quiz Page ─────────────────────────────────────────────────────────────
   const progress = ((currentQuestion + 1) / questions.length) * 100;
   const question  = questions[currentQuestion];
 
@@ -317,7 +321,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
     <div className="min-h-screen flex flex-col items-center justify-center p-4 rtl" dir="rtl">
       <div className="w-full max-w-2xl">
 
-        {/* Logo + title – mirrors LoginPage header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div
@@ -334,7 +337,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
 
         <Card className="p-8 shadow-xl border-2">
 
-          {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between mb-2 text-sm font-bold text-gray-700">
               <span>السؤال {currentQuestion + 1} من {questions.length}</span>
@@ -348,19 +350,16 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
             </div>
           </div>
 
-          {/* Subject badge */}
           <div className="mb-4">
             <span className="inline-block text-xs font-bold px-3 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
               {question.subject}
             </span>
           </div>
 
-          {/* Question */}
           <h2 className="text-lg font-bold leading-relaxed text-gray-800 mb-6 text-right">
             {question.question}
           </h2>
 
-          {/* Options */}
           <div className="space-y-3 mb-6">
             {question.options.map((option, index) => {
               const isSelected = selectedAnswer === index;
@@ -399,7 +398,6 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
             })}
           </div>
 
-          {/* Submit – identical style to LoginPage submit button */}
           <Button
             onClick={handleNext}
             disabled={selectedAnswer === null}

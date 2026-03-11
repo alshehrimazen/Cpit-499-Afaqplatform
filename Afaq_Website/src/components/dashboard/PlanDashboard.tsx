@@ -1,5 +1,17 @@
-import { useState } from 'react';
-import { Menu, ArrowLeft, ChevronDown, ChevronRight, BookOpen, CheckCircle, Clock, TrendingUp, Award, Play, RotateCcw } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Menu,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  BookOpen,
+  CheckCircle,
+  Clock,
+  TrendingUp,
+  Award,
+  Play,
+  RotateCcw
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
@@ -12,6 +24,40 @@ interface PlanDashboardProps {
   onNavigate: (page: string) => void;
   onBack: () => void;
   onToggleSidebar: () => void;
+}
+
+interface CurriculumSlide {
+  slide_number?: number;
+  title: string;
+  explanation: string;
+  key_points: string[];
+  example?: string | null;
+}
+
+interface CurriculumLesson {
+  lesson_number?: number;
+  lesson_title: string;
+  slides: CurriculumSlide[];
+}
+
+interface CurriculumUnit {
+  unit_number?: number;
+  unit_title?: string;
+  lessons: CurriculumLesson[];
+}
+
+interface CurriculumSubject {
+  subject: string;
+  student_level?: string;
+  units: CurriculumUnit[];
+}
+
+interface CurriculumResponse {
+  success?: boolean;
+  query?: string;
+  result?: {
+    subjects?: CurriculumSubject[];
+  };
 }
 
 interface Lesson {
@@ -36,137 +82,105 @@ interface Subject {
   modules: Module[];
 }
 
-// Mock data structure - this would come from your backend/state management
-const subjects: Subject[] = [
-  {
-    id: 'math',
-    name: 'الرياضيات',
-    icon: '📐',
-    color: 'from-blue-500 to-blue-600',
-    modules: [
-      {
-        id: 'math-algebra',
-        name: 'الجبر',
-        description: 'إتقان التعبيرات الجبرية والمعادلات والدوال',
-        lessons: [
-          { id: 'math-1', title: 'المعادلات التربيعية', duration: '45 دقيقة', status: 'not-started' },
-          { id: 'math-2', title: 'الأنظمة الخطية', duration: '40 دقيقة', status: 'not-started' },
-          { id: 'math-3', title: 'كثيرات الحدود', duration: '50 دقيقة', status: 'not-started' }
-        ]
-      },
-      {
-        id: 'math-geometry',
-        name: 'الهندسة',
-        description: 'استكشاف الأشكال والزوايا والتفكير المكاني',
-        lessons: [
-          { id: 'math-4', title: 'المثلثات والزوايا', duration: '35 دقيقة', status: 'not-started' },
-          { id: 'math-5', title: 'الدوائر', duration: '40 دقيقة', status: 'not-started' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'physics',
-    name: 'الفيزياء',
-    icon: '⚛️',
-    color: 'from-purple-500 to-purple-600',
-    modules: [
-      {
-        id: 'physics-mechanics',
-        name: 'الميكانيكا',
-        description: 'دراسة الحركة والقوى والطاقة',
-        lessons: [
-          { id: 'physics-1', title: 'قوانين نيوتن', duration: '50 دقيقة', status: 'not-started' },
-          { id: 'physics-2', title: 'الشغل والطاقة', duration: '45 دقيقة', status: 'not-started' },
-          { id: 'physics-3', title: 'كمية الحركة', duration: '40 دقيقة', status: 'not-started' }
-        ]
-      },
-      {
-        id: 'physics-electricity',
-        name: 'الكهرباء والمغناطيسية',
-        description: 'فهم الدوائر الكهربائية والمجالات المغناطيسية',
-        lessons: [
-          { id: 'physics-4', title: 'الدوائر الكهربائية', duration: '45 دقيقة', status: 'not-started' },
-          { id: 'physics-5', title: 'المغناطيسية', duration: '40 دقيقة', status: 'not-started' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'chemistry',
-    name: 'الكيمياء',
-    icon: '🧪',
-    color: 'from-green-500 to-green-600',
-    modules: [
-      {
-        id: 'chem-atomic',
-        name: 'التركيب الذري',
-        description: 'تعلم عن الذرات والعناصر والجدول الدوري',
-        lessons: [
-          { id: 'chem-1', title: 'النظرية الذرية', duration: '40 دقيقة', status: 'not-started' },
-          { id: 'chem-2', title: 'الجدول الدوري', duration: '35 دقيقة', status: 'not-started' }
-        ]
-      },
-      {
-        id: 'chem-bonding',
-        name: 'الروابط الكيميائية',
-        description: 'استكشاف الروابط الأيونية والتساهمية والمعدنية',
-        lessons: [
-          { id: 'chem-3', title: 'الروابط الأيونية', duration: '40 دقيقة', status: 'not-started' },
-          { id: 'chem-4', title: 'الروابط التساهمية', duration: '45 دقيقة', status: 'not-started' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'biology',
-    name: 'الأحياء',
-    icon: '🧬',
-    color: 'from-pink-500 to-pink-600',
-    modules: [
-      {
-        id: 'bio-cell',
-        name: 'علم الخلية',
-        description: 'اكتشف وحدات بناء الحياة',
-        lessons: [
-          { id: 'bio-1', title: 'تركيب الخلية', duration: '45 دقيقة', status: 'not-started' },
-          { id: 'bio-2', title: 'انقسام الخلية', duration: '50 دقيقة', status: 'not-started' }
-        ]
-      },
-      {
-        id: 'bio-genetics',
-        name: 'علم الوراثة',
-        description: 'فهم الحمض النووي والجينات والوراثة',
-        lessons: [
-          { id: 'bio-3', title: 'بنية الحمض النووي', duration: '40 دقيقة', status: 'not-started' },
-          { id: 'bio-4', title: 'علم الوراثة المندلية', duration: '45 دقيقة', status: 'not-started' }
-        ]
-      }
-    ]
+const subjectStyleMap: Record<string, { icon: string; color: string }> = {
+    رياضيات: { icon: '📐', color: 'from-blue-500 to-blue-600' },
+  فيزياء: { icon: '⚛️', color: 'from-purple-500 to-pink-600' },
+  كيمياء: { icon: '🧪', color: 'from-green-500 to-green-600' },
+  أحياء: { icon: '🧬', color: 'from-yellow-500 to-pink-600' },
+};
+
+function normalizeArabicSubjectName(value: string): string {
+  return (value || '')
+    .trim()
+    .replace(/^ال/, '');
+}
+
+function getSavedCurriculum(): CurriculumResponse | null {
+  try {
+    const raw = localStorage.getItem('afaq_curriculum');
+    if (!raw) return null;
+    return JSON.parse(raw) as CurriculumResponse;
+  } catch {
+    return null;
   }
-];
+}
 
-export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, onToggleSidebar }: PlanDashboardProps) {
-  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set(['math']));
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set(['math-algebra']));
+function estimateLessonDuration(slidesCount: number): string {
+  const minutes = Math.max(15, slidesCount * 10);
+  return `${minutes} دقيقة`;
+}
 
-  // Update lesson statuses based on plan data
-  const getUpdatedSubjects = (): Subject[] => {
-    return subjects.map(subject => ({
-      ...subject,
-      modules: subject.modules.map(module => ({
-        ...module,
-        lessons: module.lessons.map(lesson => ({
-          ...lesson,
-          status: plan.completedModules.includes(lesson.id) 
-            ? 'completed' as const
-            : 'not-started' as const
-        }))
-      }))
-    }));
-  };
+function buildSubjectsFromCurriculum(plan: StudyPlan): Subject[] {
+  const curriculum = getSavedCurriculum();
+  const rawSubjects = curriculum?.result?.subjects;
 
-  const updatedSubjects = getUpdatedSubjects();
+  if (!rawSubjects || !Array.isArray(rawSubjects) || rawSubjects.length === 0) {
+    return [];
+  }
+
+  return rawSubjects.map((subject, subjectIndex) => {
+    const style = subjectStyleMap[subject.subject] || {
+      icon: '📘',
+      color: 'from-gray-500 to-gray-600',
+    };
+
+    const modules: Module[] = (subject.units || []).map((unit, unitIndex) => {
+      const lessons: Lesson[] = (unit.lessons || []).map((lesson, lessonIndex) => {
+        const payload = JSON.stringify({
+          subject: subject.subject,
+          unitTitle: unit.unit_title || `وحدة ${unit.unit_number ?? unitIndex + 1}`,
+          lessonTitle: lesson.lesson_title,
+          lessonNumber: lesson.lesson_number ?? lessonIndex + 1,
+          subjectIndex,
+          unitIndex,
+          lessonIndex,
+        });
+
+        const isCompleted = plan.completedModules.includes(payload);
+
+        return {
+          id: payload,
+          title: lesson.lesson_title,
+          duration: estimateLessonDuration(Array.isArray(lesson.slides) ? lesson.slides.length : 0),
+          status: isCompleted ? 'completed' : 'not-started',
+        };
+      });
+
+      return {
+        id: `${subject.subject}-unit-${unit.unit_number ?? unitIndex + 1}`,
+        name: unit.unit_title || `وحدة ${unit.unit_number ?? unitIndex + 1}`,
+        description: `تحتوي على ${lessons.length} درس`,
+        lessons,
+      };
+    });
+
+    return {
+      id: `subject-${subjectIndex}-${subject.subject}`,
+      name: subject.subject,
+      icon: style.icon,
+      color: style.color,
+      modules,
+    };
+  });
+}
+
+export function PlanDashboard({
+  user,
+  plan,
+  onStartModule,
+  onNavigate,
+  onBack,
+  onToggleSidebar
+}: PlanDashboardProps) {
+  const subjects = useMemo(() => buildSubjectsFromCurriculum(plan), [plan]);
+
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(
+    new Set(subjects.length > 0 ? [subjects[0].id] : [])
+  );
+
+  const [expandedModules, setExpandedModules] = useState<Set<string>>(
+    new Set(subjects[0]?.modules?.[0] ? [subjects[0].modules[0].id] : [])
+  );
 
   const toggleSubject = (subjectId: string) => {
     const newExpanded = new Set(expandedSubjects);
@@ -188,11 +202,10 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
     setExpandedModules(newExpanded);
   };
 
-  // Calculate progress for subjects and modules
   const getSubjectProgress = (subject: Subject): number => {
     const totalLessons = subject.modules.reduce((sum, mod) => sum + mod.lessons.length, 0);
     const completedLessons = subject.modules.reduce(
-      (sum, mod) => sum + mod.lessons.filter(l => l.status === 'completed').length,
+      (sum, mod) => sum + mod.lessons.filter((l) => l.status === 'completed').length,
       0
     );
     return totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
@@ -200,7 +213,7 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
 
   const getModuleProgress = (module: Module): { completed: number; total: number; percentage: number } => {
     const total = module.lessons.length;
-    const completed = module.lessons.filter(l => l.status === 'completed').length;
+    const completed = module.lessons.filter((l) => l.status === 'completed').length;
     return {
       completed,
       total,
@@ -208,17 +221,19 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
     };
   };
 
-  const totalLessons = updatedSubjects.reduce(
+  const totalLessons = subjects.reduce(
     (sum, subject) => sum + subject.modules.reduce((modSum, mod) => modSum + mod.lessons.length, 0),
     0
   );
-  const completedLessons = updatedSubjects.reduce(
+
+  const completedLessons = subjects.reduce(
     (sum, subject) => sum + subject.modules.reduce(
-      (modSum, mod) => modSum + mod.lessons.filter(l => l.status === 'completed').length,
+      (modSum, mod) => modSum + mod.lessons.filter((l) => l.status === 'completed').length,
       0
     ),
     0
   );
+
   const overallProgress = totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
 
   const averageScore = plan.completedModules.length > 0
@@ -227,7 +242,6 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="bg-white border-b sticky top-0 z-30">
         <div className="px-4 py-4 flex items-center gap-3">
           <button onClick={onToggleSidebar} className="lg:hidden">
@@ -241,21 +255,23 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
       </header>
 
       <div className="p-4 lg:p-8 max-w-7xl mx-auto">
-        {/* Plan Overview */}
         <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl p-8 text-white mb-8">
           <h2 className="text-3xl mb-2">{plan.title}</h2>
-          <p className="text-lg opacity-90 mb-4">منهج المستوى {plan.level === 'beginner' ? 'المبتدئ' : plan.level === 'intermediate' ? 'المتوسط' : 'المتقدم'}</p>
+          <p className="text-lg opacity-90 mb-4">
+            منهج المستوى {plan.level === 'beginner' ? 'المبتدئ' : plan.level === 'intermediate' ? 'المتوسط' : 'المتقدم'}
+          </p>
           <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
               <span>التقدم الإجمالي</span>
               <span>{overallProgress.toFixed(0)}%</span>
             </div>
             <Progress value={overallProgress} className="h-3 bg-white/30" />
-            <p className="text-sm mt-2 opacity-90">{completedLessons} من {totalLessons} درس مكتمل</p>
+            <p className="text-sm mt-2 opacity-90">
+              {completedLessons} من {totalLessons} درس مكتمل
+            </p>
           </div>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
@@ -263,7 +279,9 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
               <TrendingUp className="w-5 h-5 text-blue-500" />
             </div>
             <p className="text-3xl mb-1">{overallProgress.toFixed(0)}%</p>
-            <p className="text-sm text-gray-600">{completedLessons}/{totalLessons} درس</p>
+            <p className="text-sm text-gray-600">
+              {completedLessons}/{totalLessons} درس
+            </p>
           </Card>
 
           <Card className="p-6">
@@ -280,22 +298,26 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
               <span className="text-gray-600">المواد</span>
               <BookOpen className="w-5 h-5 text-purple-500" />
             </div>
-            <p className="text-3xl mb-1">{updatedSubjects.length}</p>
+            <p className="text-3xl mb-1">{subjects.length}</p>
             <p className="text-sm text-gray-600">مواد أساسية</p>
           </Card>
         </div>
 
-        {/* Subjects with Modules and Lessons */}
         <div className="space-y-4">
           <h2 className="text-2xl mb-4">المنهج الدراسي</h2>
 
-          {updatedSubjects.map((subject) => {
+          {subjects.length === 0 && (
+            <Card className="p-8 text-center">
+              <p className="text-gray-600">لا يوجد منهج محفوظ حالياً. أعد التقييم التشخيصي أولاً.</p>
+            </Card>
+          )}
+
+          {subjects.map((subject) => {
             const subjectProgress = getSubjectProgress(subject);
             const isExpanded = expandedSubjects.has(subject.id);
 
             return (
               <Card key={subject.id} className="overflow-hidden">
-                {/* Subject Header */}
                 <button
                   onClick={() => toggleSubject(subject.id)}
                   className="w-full p-6 text-right hover:bg-gray-50 transition-colors"
@@ -329,7 +351,6 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
                   </div>
                 </button>
 
-                {/* Modules (shown when subject is expanded) */}
                 {isExpanded && (
                   <div className="border-t bg-gray-50/50 p-4 space-y-3">
                     {subject.modules.map((module) => {
@@ -338,7 +359,6 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
 
                       return (
                         <Card key={module.id} className="bg-white">
-                          {/* Module Header */}
                           <button
                             onClick={() => toggleModule(module.id)}
                             className="w-full p-4 text-right hover:bg-gray-50 transition-colors"
@@ -372,7 +392,6 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
                             </div>
                           </button>
 
-                          {/* Lessons (shown when module is expanded) */}
                           {isModuleExpanded && (
                             <div className="border-t bg-gray-50/50 px-4 py-3 space-y-2">
                               {module.lessons.map((lesson) => (
@@ -391,6 +410,7 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
                                       <BookOpen className="w-4 h-4 text-gray-400" />
                                     )}
                                   </div>
+
                                   <div className="flex-1 min-w-0">
                                     <h5 className="text-sm mb-1">{lesson.title}</h5>
                                     <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -405,11 +425,15 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
                                           ? 'bg-blue-100 text-blue-700'
                                           : 'bg-gray-100 text-gray-600'
                                       }`}>
-                                        {lesson.status === 'not-started' ? 'لم يبدأ' : 
-                                         lesson.status === 'in-progress' ? 'قيد التقدم' : 'مكتمل'}
+                                        {lesson.status === 'not-started'
+                                          ? 'لم يبدأ'
+                                          : lesson.status === 'in-progress'
+                                          ? 'قيد التقدم'
+                                          : 'مكتمل'}
                                       </span>
                                     </div>
                                   </div>
+
                                   <div>
                                     {lesson.status === 'completed' ? (
                                       <Button
@@ -445,7 +469,6 @@ export function PlanDashboard({ user, plan, onStartModule, onNavigate, onBack, o
           })}
         </div>
 
-        {/* Final Exam CTA */}
         {overallProgress === 100 && (
           <Card className="p-8 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 mt-8">
             <div className="text-center">

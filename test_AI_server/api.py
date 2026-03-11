@@ -2,6 +2,7 @@ import torch
 import json
 import random
 import re
+import requests
 import transformers
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException
@@ -18,7 +19,6 @@ from peft import PeftModel
 
 app = FastAPI(title="Afaq AI Quiz Server")
 
-# حل مشكلة CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,6 +26,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# رابط السيرفر الثاني
+CURRICULUM_API_URL = "http://127.0.0.1:9000/generate"
 
 # ============================================
 # Pydantic Models
@@ -90,7 +93,9 @@ class StrictLanguageLogitsProcessor(LogitsProcessor):
                 decoded = tokenizer.decode([token_id], skip_special_tokens=True)
                 if bad_chars_pattern.search(decoded) or english_word_pattern.search(decoded):
                     self.suppressed_tokens.append(token_id)
-            except: pass
+            except:
+                pass
+
         self.suppressed_tokens = torch.tensor(self.suppressed_tokens, dtype=torch.long).to(device)
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
@@ -106,6 +111,7 @@ logits_processor = LogitsProcessorList([StrictLanguageLogitsProcessor(tokenizer)
 def get_balanced_questions(questions_per_subject=2):
     questions_by_subject = defaultdict(list)
     final_questions = []
+
     try:
         with open(dataset_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -120,9 +126,16 @@ def get_balanced_questions(questions_per_subject=2):
                 correct_letter_match = re.search(r'الإجابة الصحيحة.*?(أ|ب|ج|د)', full_output)
                 correct_letter = correct_letter_match.group(1) if correct_letter_match else ""
 
-                if not correct_letter: continue
+                if not correct_letter:
+                    continue
 
-                ref_exp = full_output.replace(f"الإجابة الصحيحة هي ({correct_letter}).", "").replace("إجابة الطالب صحيحة.", "").replace("إجابة الطالب خاطئة.", "").strip()
+                ref_exp = full_output.replace(
+                    f"الإجابة الصحيحة هي ({correct_letter}).", ""
+                ).replace(
+                    "إجابة الطالب صحيحة.", ""
+                ).replace(
+                    "إجابة الطالب خاطئة.", ""
+                ).strip()
 
                 questions_by_subject[subject].append({
                     "subject": subject,
@@ -136,6 +149,7 @@ def get_balanced_questions(questions_per_subject=2):
                 final_questions.extend(random.sample(q_list, questions_per_subject))
             else:
                 final_questions.extend(q_list)
+
         random.shuffle(final_questions)
 
         for idx, q in enumerate(final_questions):
@@ -152,7 +166,6 @@ def get_balanced_questions(questions_per_subject=2):
 
 @app.get("/get_quiz")
 async def generate_quiz():
-    """يسحب أسئلة الاختبار ويرسلها للتطبيق (يخفي الإجابة عن الطالب)"""
     questions = get_balanced_questions(questions_per_subject=2)
     if not questions:
         raise HTTPException(status_code=500, detail="Failed to load questions from dataset.")
@@ -161,7 +174,6 @@ async def generate_quiz():
 
 @app.post("/submit_quiz")
 async def evaluate_quiz(submission: QuizSubmission):
-    """يستقبل إجابات الطالب، يقيّمها، ويولد الشرح والنتيجة النهائية"""
     results = []
     subject_scores = defaultdict(int)
     subject_totals = defaultdict(int)
@@ -221,21 +233,48 @@ async def evaluate_quiz(submission: QuizSubmission):
         })
 
     performance_report = []
+    profile_parts = []
+
     for subj, total in subject_totals.items():
         subj_score = subject_scores[subj]
         subj_percentage = (subj_score / total) * 100
 
-        if subj_percentage >= 80: level = "ممتاز (قوي)"
-        elif subj_percentage >= 50: level = "متوسط"
-        else: level = "ضعيف (يحتاج مراجعة)"
+        if subj_percentage >= 80:
+            level = "ممتاز"
+            level_label = "ممتاز (قوي)"
+        elif subj_percentage >= 50:
+            level = "متوسط"
+            level_label = "متوسط"
+        else:
+            level = "ضعيف"
+            level_label = "ضعيف (يحتاج مراجعة)"
 
         performance_report.append({
             "subject": subj,
             "score": subj_score,
             "total": total,
             "percentage": round(subj_percentage),
-            "level": level
+            "level": level_label
         })
+
+        profile_parts.append(f"{subj} {level}")
+
+    student_profile_query = "، ".join(profile_parts)
+    curriculum = None
+
+    if student_profile_query:
+        try:
+            r = requests.post(
+                CURRICULUM_API_URL,
+                json={"query": student_profile_query},
+                timeout=120
+            )
+            if r.status_code == 200:
+                curriculum = r.json()
+            else:
+                print(f"⚠️ Curriculum server returned {r.status_code}: {r.text[:300]}")
+        except Exception as e:
+            print(f"⚠️ Curriculum server error: {e}")
 
     return {
         "status": "success",
@@ -243,11 +282,13 @@ async def evaluate_quiz(submission: QuizSubmission):
         "total_questions": valid_questions,
         "total_percentage": round((total_score / valid_questions) * 100) if valid_questions > 0 else 0,
         "performance_by_subject": performance_report,
-        "detailed_results": results
+        "detailed_results": results,
+        "student_profile": student_profile_query,
+        "curriculum": curriculum
     }
 
 # ============================================
-# تشغيل السيرفر على منفذ جديد (8080) لتجنب التعارض
+# تشغيل السيرفر على منفذ 8080
 # ============================================
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
