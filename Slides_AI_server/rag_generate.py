@@ -16,7 +16,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = ""  # أو حطه مباشرة
+OPENROUTER_API_KEY = "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"  # أو حطه مباشرة
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
@@ -83,6 +83,10 @@ class GenerateResponse(BaseModel):
     success: bool
     query: str
     result: dict
+
+class FlashcardsRequest(BaseModel):
+    moduleId: str
+    topic: Optional[str] = None
 
 # =================================================
 # HELPERS
@@ -548,7 +552,7 @@ def split_math_context_into_slide_titles(lesson_title: str, ctx: str, n: int = 4
     return generate_distinct_slide_titles("رياضيات", lesson_title, slide_chunks)
 
 # =================================================
-# ONE API CALL
+# MAIN OPENROUTER CALL
 # =================================================
 def system_prompt() -> str:
     return (
@@ -685,7 +689,7 @@ def build_template(profile: list[dict]) -> tuple[dict, dict]:
     return template, ctx_map
 
 # =================================================
-# LOCAL REPAIR / DISTINCT SLIDES
+# LOCAL REPAIR
 # =================================================
 def repair_with_local_context(output_json: dict, ctx_map: dict) -> dict:
     for subj in output_json.get("subjects", []):
@@ -801,7 +805,7 @@ def generate_curriculum(student_profile_query: str) -> dict:
     return final
 
 # =================================================
-# HELPERS TO CONVERT FOR FRONTEND
+# FRONTEND HELPERS
 # =================================================
 def curriculum_to_module_content(curriculum: dict) -> dict:
     slides = []
@@ -830,6 +834,198 @@ def curriculum_to_module_content(curriculum: dict) -> dict:
         "slides": slides,
         "quickQuestions": {}
     }
+
+def parse_module_id(module_id: str) -> dict:
+    try:
+        data = json.loads(module_id)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {"lessonTitle": module_id}
+
+def normalize_simple(text: str) -> str:
+    text = (text or "").strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+def flashcards_system_prompt() -> str:
+    return (
+        "أنت مساعد تعليمي عربي متخصص في صناعة بطاقات تعليمية قصيرة وواضحة للطلاب. "
+        "أخرج JSON فقط دون أي نص إضافي. "
+        "المطلوب إنتاج بطاقات flashcards من الدرس. "
+        "كل بطاقة يجب أن تحتوي على:\n"
+        '- "id": رقم أو نص قصير.\n'
+        '- "front": سؤال قصير وواضح ومفهوم.\n'
+        '- "back": جواب قصير جدًا ومباشر وصحيح علميًا.\n'
+        "الشروط:\n"
+        "1) لا تكرر نص السؤال داخل الجواب.\n"
+        "2) لا تعطِ إجابات مبتورة أو ناقصة.\n"
+        "3) لا تستخدم الرموز الغريبة أو النصوص غير المفهومة.\n"
+        "4) اجعل الجواب مختصرًا، غالبًا سطر واحد.\n"
+        "5) أخرج من 4 إلى 6 بطاقات فقط.\n"
+        "6) لا تكتب أي شرح خارج JSON.\n"
+        'صيغة الخرج تكون قائمة JSON مثل: [{"id":"1","front":"...","back":"..."}]'
+    )
+
+def build_flashcards_fallback(lesson_title: str, slides: list[dict]) -> list[dict]:
+    flashcards = []
+
+    for idx, slide in enumerate(slides[:6], start=1):
+        title = (slide.get("title") or f"بطاقة {idx}").strip()
+        key_points = slide.get("key_points", []) or []
+        explanation = (slide.get("explanation") or "").strip()
+
+        if key_points:
+            answer = str(key_points[0]).strip()
+        else:
+            parts = re.split(r"[.؟!]\s*", explanation)
+            answer = parts[0].strip() if parts and parts[0].strip() else explanation
+
+        answer = re.sub(r"\s+", " ", answer).strip()
+        words = answer.split()[:12]
+        answer = " ".join(words).strip()
+
+        if not answer:
+            answer = "معلومة مختصرة"
+
+        question = f"ما المقصود بـ {title}؟" if title else f"ما الفكرة في البطاقة {idx}؟"
+
+        flashcards.append({
+            "id": str(idx),
+            "front": question,
+            "back": answer
+        })
+
+    return flashcards
+
+def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> list[dict]:
+    if not OPENROUTER_API_KEY:
+        return build_flashcards_fallback(lesson_title, slides)
+
+    if not slides:
+        return []
+
+    lesson_text_parts = []
+    for slide in slides:
+        title = slide.get("title", "")
+        explanation = slide.get("explanation", "")
+        key_points = slide.get("key_points", []) or []
+
+        block = f"عنوان الشريحة: {title}\nشرح: {explanation}\n"
+        if key_points:
+            block += "نقاط رئيسية:\n- " + "\n- ".join(key_points) + "\n"
+        lesson_text_parts.append(block)
+
+    lesson_text = "\n\n".join(lesson_text_parts)[:5000]
+
+    prompt = f"""
+أنشئ بطاقات تعليمية لهذا الدرس.
+
+اسم الدرس:
+{lesson_title}
+
+محتوى الدرس:
+{lesson_text}
+
+أخرج JSON فقط.
+""".strip()
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://localhost",
+        "X-Title": "Afaq Flashcards Generator"
+    }
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": flashcards_system_prompt()},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "max_tokens": 1200,
+    }
+
+    r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC)
+
+    if r.status_code != 200:
+        raise RuntimeError(f"Flashcards model error {r.status_code}: {r.text[:300]}")
+
+    data = r.json()
+    if "choices" not in data or not data["choices"]:
+        raise RuntimeError("Flashcards model returned no choices")
+
+    raw = data["choices"][0]["message"]["content"]
+    parsed = extract_json_robust(raw)
+
+    if not isinstance(parsed, list):
+        raise ValueError("Flashcards response is not a JSON list")
+
+    flashcards = []
+    for idx, item in enumerate(parsed, start=1):
+        if not isinstance(item, dict):
+            continue
+
+        front = str(item.get("front", "")).strip()
+        back = str(item.get("back", "")).strip()
+
+        if not front or not back:
+            continue
+
+        flashcards.append({
+            "id": str(item.get("id", idx)),
+            "front": front,
+            "back": back
+        })
+
+    if not flashcards:
+        return build_flashcards_fallback(lesson_title, slides)
+
+    return flashcards[:6]
+
+def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
+    parsed = parse_module_id(module_id)
+
+    target_subject = normalize_simple(parsed.get("subject", ""))
+    target_unit = normalize_simple(parsed.get("unitTitle", ""))
+    target_lesson = normalize_simple(parsed.get("lessonTitle", ""))
+
+    subjects = curriculum.get("subjects", [])
+    if not subjects:
+        return []
+
+    for subject in subjects:
+        subject_name = normalize_simple(subject.get("subject", ""))
+        if target_subject and subject_name != target_subject:
+            continue
+
+        for unit in subject.get("units", []):
+            unit_title = normalize_simple(unit.get("unit_title", ""))
+            if target_unit and unit_title != target_unit:
+                continue
+
+            for lesson in unit.get("lessons", []):
+                lesson_title = normalize_simple(lesson.get("lesson_title", ""))
+                if target_lesson and lesson_title != target_lesson:
+                    continue
+
+                slides = lesson.get("slides", []) or []
+                try:
+                    return generate_flashcards_with_model(
+                        lesson.get("lesson_title", "هذا الدرس"),
+                        slides
+                    )
+                except Exception as e:
+                    print("FLASHCARDS MODEL ERROR:", repr(e))
+                    return build_flashcards_fallback(
+                        lesson.get("lesson_title", "هذا الدرس"),
+                        slides
+                    )
+
+    return []
 
 # =================================================
 # API ROUTES
@@ -879,6 +1075,34 @@ def module_content_api(payload: GenerateRequest):
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/flashcards")
+def flashcards_api(payload: FlashcardsRequest):
+    try:
+        query = (payload.topic or "").strip()
+
+        if not query:
+            parsed = parse_module_id(payload.moduleId)
+            subject = (parsed.get("subject") or "").strip()
+
+            if subject:
+                query = f"{subject} متوسط"
+            else:
+                query = "أحياء متوسط"
+
+        curriculum = generate_curriculum(query)
+        flashcards = curriculum_to_flashcards(curriculum, payload.moduleId)
+
+        if not flashcards:
+            raise HTTPException(status_code=404, detail="لم يتم العثور على بطاقات لهذا الدرس")
+
+        return flashcards
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("FLASHCARDS ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 # =================================================

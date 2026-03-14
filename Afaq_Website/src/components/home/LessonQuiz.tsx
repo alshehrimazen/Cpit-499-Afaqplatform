@@ -3,7 +3,13 @@ import { ArrowRight, CheckCircle, XCircle, Trophy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
-import { generateQuiz, isAiApiConfigured, type QuizQuestion } from '../../services/aiApi';
+import {
+  getLessonQuiz,
+  submitLessonQuiz,
+  isAiApiConfigured,
+  type LessonQuizApiQuestion,
+  type LessonQuizSubmitResponse,
+} from '../../services/aiApi';
 
 interface LessonQuizProps {
   lessonTitle: string;
@@ -12,23 +18,28 @@ interface LessonQuizProps {
 }
 
 interface Question {
-  id: string;
-  question: string;
+  question_id: number;
+  subject: string;
+  question_text: string;
+  display_question: string;
   options: string[];
-  correctAnswer: number;
-  explanation: string;
+  correct_letter: string;
+  reference_explanation: string;
 }
+
+const ARABIC_CHOICES = ['أ', 'ب', 'ج', 'د'];
 
 export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [correctAnswers, setCorrectAnswers] = useState(0);
+  const [answers, setAnswers] = useState<number[]>([]);
   const [quizComplete, setQuizComplete] = useState(false);
+  const [result, setResult] = useState<LessonQuizSubmitResponse | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -38,9 +49,9 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
       setQuestions([]);
       setCurrentQuestion(0);
       setSelectedAnswer(null);
-      setShowFeedback(false);
-      setCorrectAnswers(0);
+      setAnswers([]);
       setQuizComplete(false);
+      setResult(null);
 
       if (!isAiApiConfigured()) {
         setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
@@ -48,22 +59,24 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
         return;
       }
 
-      // Reuse quiz generator: moduleId fixed, lessonTitle as topic
-      const quiz = await generateQuiz('lesson', lessonTitle);
+      const quiz = await getLessonQuiz(lessonTitle, 5);
       if (!active) return;
 
       if (quiz && Array.isArray(quiz.questions) && quiz.questions.length > 0) {
-        const mapped: Question[] = quiz.questions.map((q: QuizQuestion, idx: number) => ({
-          id: String(idx + 1),
-          question: q.question,
+        const mapped: Question[] = quiz.questions.map((q: LessonQuizApiQuestion) => ({
+          question_id: q.question_id,
+          subject: q.subject,
+          question_text: q.question_text,
+          display_question: q.display_question,
           options: q.options,
-          correctAnswer: q.correctAnswer,
-          explanation: '',
+          correct_letter: q.correct_letter,
+          reference_explanation: q.reference_explanation,
         }));
         setQuestions(mapped);
       } else {
-        setError('تعذر تحميل أسئلة هذا الدرس حالياً. حاول مرة أخرى لاحقاً.');
+        setError('تعذر تحميل أسئلة هذا الدرس حالياً. تأكد أن اسم الدرس يطابق الموضوع في Questions.jsonl حرفيًا.');
       }
+
       setLoading(false);
     };
 
@@ -79,18 +92,20 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
 
   const emptyExplanation = useMemo(() => 'لا يوجد شرح متاح حالياً.', []);
 
-  if (loading) {
+  if (loading || submitting) {
     return (
       <Card className="p-8 max-w-3xl mx-auto text-center" dir="rtl">
         <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full mb-4">
           <Trophy className="w-5 h-5 text-purple-600" />
-          <span className="text-purple-700">جاري إعداد اختبار الدرس...</span>
+          <span className="text-purple-700">
+            {submitting ? 'جاري تصحيح الاختبار...' : 'جاري إعداد اختبار الدرس...'}
+          </span>
         </div>
       </Card>
     );
   }
 
-  if (error || total === 0 || !question) {
+  if (error || total === 0 || (!question && !quizComplete)) {
     return (
       <Card className="p-8 max-w-3xl mx-auto text-center" dir="rtl">
         <p className="text-red-600 mb-4">{error || 'لا توجد أسئلة متاحة حالياً.'}</p>
@@ -105,37 +120,52 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
   }
 
   const handleSelectAnswer = (index: number) => {
-    if (!showFeedback) {
-      setSelectedAnswer(index);
-    }
+    setSelectedAnswer(index);
   };
 
-  const handleSubmitAnswer = () => {
-    if (selectedAnswer !== null) {
-      setShowFeedback(true);
-      if (selectedAnswer === question.correctAnswer) {
-        setCorrectAnswers(correctAnswers + 1);
-      }
-    }
-  };
+  const handleNextQuestion = async () => {
+    if (selectedAnswer === null) return;
 
-  const handleNextQuestion = () => {
+    const newAnswers = [...answers, selectedAnswer];
+    setAnswers(newAnswers);
+
     if (currentQuestion < total - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
-      setShowFeedback(false);
-    } else {
-      setQuizComplete(true);
+      return;
     }
+
+    setSubmitting(true);
+
+    const payload = newAnswers.map((answerIndex, i) => ({
+      question_id: questions[i].question_id,
+      subject: questions[i].subject || 'عام',
+      question_text: questions[i].question_text,
+      user_answer: ARABIC_CHOICES[answerIndex],
+      correct_letter: questions[i].correct_letter,
+      reference_explanation: questions[i].reference_explanation,
+    }));
+
+    const submitResult = await submitLessonQuiz(lessonTitle, payload);
+
+    if (!submitResult || submitResult.status !== 'success') {
+      setError('تعذر تصحيح اختبار الدرس حالياً.');
+      setSubmitting(false);
+      return;
+    }
+
+    setResult(submitResult);
+    setQuizComplete(true);
+    setSubmitting(false);
   };
 
   const handleFinishQuiz = () => {
-    const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
+    const score = result?.total_percentage ?? 0;
     onComplete(score);
   };
 
-  if (quizComplete) {
-    const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
+  if (quizComplete && result) {
+    const score = result.total_percentage;
     const passed = score >= 70;
 
     return (
@@ -150,26 +180,66 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
               <XCircle className="w-10 h-10 text-white" />
             )}
           </div>
+
           <h2 className="text-3xl mb-2">
             {passed ? 'عمل ممتاز!' : 'استمر في التدريب!'}
           </h2>
+
           <p className="text-gray-600 mb-6">
-            لقد أجبت بشكل صحيح على {correctAnswers} من {total} أسئلة
+            لقد أجبت بشكل صحيح على {result.total_score} من {result.total_questions} أسئلة
           </p>
+
           <div className="bg-gray-100 rounded-lg p-6 mb-8">
             <p className="text-5xl mb-2">{score}%</p>
             <Progress value={score} className="h-3" />
           </div>
+
+          <div className="text-right mb-8">
+            <h3 className="text-xl mb-4">تغذية راجعة لكل سؤال</h3>
+            <div className="space-y-4">
+              {result.detailed_results.map((item, index) => {
+                const sourceQuestion = questions.find((q) => q.question_id === item.question_id);
+                const correctIndex = ARABIC_CHOICES.indexOf(item.correct_letter);
+
+                return (
+                  <div key={index} className={`rounded-lg border p-4 ${item.is_correct ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-start gap-3 mb-3">
+                      {item.is_correct ? (
+                        <CheckCircle className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-red-600 mt-1 flex-shrink-0" />
+                      )}
+
+                      <div className="flex-1">
+                        <p className="font-semibold mb-2">السؤال {index + 1}: {sourceQuestion?.display_question}</p>
+                        <p className="text-sm text-gray-700 mb-1">إجابتك: {item.user_answer}</p>
+                        {correctIndex >= 0 && sourceQuestion?.options?.[correctIndex] && (
+                          <p className="text-sm text-gray-700 mb-2">
+                            الإجابة الصحيحة: {item.correct_letter} - {sourceQuestion.options[correctIndex]}
+                          </p>
+                        )}
+                        <p className="text-sm text-gray-800 leading-7">
+                          {item.ai_explanation || emptyExplanation}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="space-y-3">
             {passed ? (
               <p className="text-green-600">
-                أحسنت! لقد أتقنت هذا الدرس. استمر في العمل الممتاز!
+                أحسنت! لقد أتقنت هذا الدرس.
               </p>
             ) : (
               <p className="text-orange-600">
-                راجع مواد الدرس وحاول مرة أخرى لتحسين درجتك.
+                راجع الدرس ثم أعد المحاولة.
               </p>
             )}
+
             <div className="flex gap-3 justify-center">
               <Button onClick={handleFinishQuiz} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
                 متابعة التعلم
@@ -183,8 +253,6 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
       </Card>
     );
   }
-
-  const isCorrect = selectedAnswer === question.correctAnswer;
 
   return (
     <div className="max-w-3xl mx-auto" dir="rtl">
@@ -207,48 +275,21 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
         </div>
 
         <div className="mb-8">
-          <h3 className="text-xl mb-6">{question.question}</h3>
+          <h3 className="text-xl mb-6">{question.display_question}</h3>
           <div className="space-y-3">
             {question.options.map((option, index) => {
               const isSelected = selectedAnswer === index;
-              const isCorrectAnswer = index === question.correctAnswer;
-              
-              let bgColor = 'bg-white hover:bg-gray-50';
-              let borderColor = 'border-gray-200';
-              
-              if (showFeedback) {
-                if (isSelected && isCorrect) {
-                  bgColor = 'bg-green-50';
-                  borderColor = 'border-green-500';
-                } else if (isSelected && !isCorrect) {
-                  bgColor = 'bg-red-50';
-                  borderColor = 'border-red-500';
-                } else if (isCorrectAnswer) {
-                  bgColor = 'bg-green-50';
-                  borderColor = 'border-green-500';
-                }
-              } else if (isSelected) {
-                bgColor = 'bg-blue-50';
-                borderColor = 'border-blue-500';
-              }
-
               return (
                 <button
                   key={index}
                   onClick={() => handleSelectAnswer(index)}
-                  disabled={showFeedback}
-                  className={`w-full text-right p-4 rounded-lg border-2 transition-all ${bgColor} ${borderColor} ${
-                    !showFeedback ? 'cursor-pointer' : 'cursor-default'
+                  className={`w-full text-right p-4 rounded-lg border-2 transition-all ${
+                    isSelected ? 'bg-blue-50 border-blue-500' : 'bg-white hover:bg-gray-50 border-gray-200'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span>{option}</span>
-                    {showFeedback && (isSelected || isCorrectAnswer) && (
-                      <>
-                        {isCorrectAnswer && <CheckCircle className="w-5 h-5 text-green-600" />}
-                        {isSelected && !isCorrect && <XCircle className="w-5 h-5 text-red-600" />}
-                      </>
-                    )}
+                    {isSelected && <CheckCircle className="w-5 h-5 text-blue-600" />}
                   </div>
                 </button>
               );
@@ -256,44 +297,18 @@ export function LessonQuiz({ lessonTitle, onComplete, onBack }: LessonQuizProps)
           </div>
         </div>
 
-        {showFeedback && (
-          <div className={`p-4 rounded-lg mb-6 ${isCorrect ? 'bg-green-50 border-2 border-green-200' : 'bg-orange-50 border-2 border-orange-200'}`}>
-            <div className="flex items-start gap-3">
-              {isCorrect ? (
-                <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-              ) : (
-                <XCircle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" />
-              )}
-              <div>
-                <p className={`mb-2 ${isCorrect ? 'text-green-900' : 'text-orange-900'}`}>
-                  {isCorrect ? 'صحيح!' : 'ليس تماماً'}
-                </p>
-                <p className="text-sm text-gray-700">{question.explanation || emptyExplanation}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="flex justify-between">
           <div className="text-gray-600">
-            الدرجة: {correctAnswers}/{currentQuestion + (showFeedback ? 1 : 0)}
+            الإجابات المختارة: {answers.length + (selectedAnswer !== null ? 1 : 0)}/{total}
           </div>
-          {!showFeedback ? (
-            <Button
-              onClick={handleSubmitAnswer}
-              disabled={selectedAnswer === null}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-            >
-              إرسال الإجابة
-            </Button>
-          ) : (
-            <Button
-              onClick={handleNextQuestion}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-            >
-              {currentQuestion < total - 1 ? 'السؤال التالي' : 'إنهاء الاختبار'}
-            </Button>
-          )}
+
+          <Button
+            onClick={handleNextQuestion}
+            disabled={selectedAnswer === null}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+          >
+            {currentQuestion < total - 1 ? 'السؤال التالي' : 'تسليم الاختبار'}
+          </Button>
         </div>
       </Card>
     </div>

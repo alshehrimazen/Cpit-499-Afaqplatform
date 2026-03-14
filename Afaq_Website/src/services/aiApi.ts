@@ -1,10 +1,17 @@
 /**
- * AI Learning API – talks to your AI server for plans, flashcards, quizzes, exams, and slides.
- * If VITE_AI_API_BASE_URL is not set or a request fails, the app falls back to local static data.
+ * AI Learning API
+ * Quiz API  -> diagnostic / final / lesson quiz
+ * RAG API   -> module content / flashcards
  */
 
-const getBaseUrl = (): string => {
-  const base = import.meta.env?.VITE_AI_API_BASE_URL;
+const getQuizBaseUrl = (): string => {
+  const base = import.meta.env?.VITE_QUIZ_API_BASE_URL;
+  if (typeof base === 'string' && base.trim()) return base.replace(/\/$/, '');
+  return '';
+};
+
+const getRagBaseUrl = (): string => {
+  const base = import.meta.env?.VITE_RAG_API_BASE_URL;
   if (typeof base === 'string' && base.trim()) return base.replace(/\/$/, '');
   return '';
 };
@@ -12,7 +19,9 @@ const getBaseUrl = (): string => {
 const getAuthHeaders = (): Record<string, string> => {
   const token = import.meta.env?.VITE_AI_API_TOKEN;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (typeof token === 'string' && token.trim()) headers['Authorization'] = `Bearer ${token}`;
+  if (typeof token === 'string' && token.trim()) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   return headers;
 };
 
@@ -20,8 +29,12 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T |
   try {
     const res = await fetch(url, {
       ...options,
-      headers: { ...getAuthHeaders(), ...(options.headers as Record<string, string>) },
+      headers: {
+        ...getAuthHeaders(),
+        ...(options.headers as Record<string, string>),
+      },
     });
+
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -30,28 +43,15 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T |
 }
 
 // ==============================
-// Quiz server helpers
+// Shared types
 // ==============================
-export interface DiagnosticApiQuestion {
-  question_id: number;
-  subject: string;
-  question_text: string;
-  correct_letter: string;
-  reference_explanation: string;
-}
 
-export interface DiagnosticStudentAnswerPayload {
-  question_id: number;
+export interface QuizPerformanceItem {
   subject: string;
-  question_text: string;
-  user_answer: string;
-  correct_letter: string;
-  reference_explanation: string;
-}
-
-export interface DiagnosticQuizResponse {
-  status: string;
-  data: DiagnosticApiQuestion[];
+  score: number;
+  total: number;
+  percentage: number;
+  level: string;
 }
 
 export interface QuizDetailedResult {
@@ -63,12 +63,30 @@ export interface QuizDetailedResult {
   ai_explanation: string;
 }
 
-export interface QuizPerformanceItem {
+export interface DiagnosticStudentAnswerPayload {
+  question_id: number;
   subject: string;
-  score: number;
-  total: number;
-  percentage: number;
-  level: string;
+  question_text: string;
+  user_answer: string;
+  correct_letter: string;
+  reference_explanation: string;
+}
+
+// ==============================
+// Diagnostic quiz
+// ==============================
+
+export interface DiagnosticApiQuestion {
+  question_id: number;
+  subject: string;
+  question_text: string;
+  correct_letter: string;
+  reference_explanation: string;
+}
+
+export interface DiagnosticQuizResponse {
+  status: string;
+  data: DiagnosticApiQuestion[];
 }
 
 export interface CurriculumSlide {
@@ -117,8 +135,9 @@ export interface DiagnosticSubmitResponse {
 }
 
 export async function getDiagnosticQuiz(): Promise<DiagnosticQuizResponse | null> {
-  const base = getBaseUrl();
+  const base = getQuizBaseUrl();
   if (!base) return null;
+
   return fetchJson<DiagnosticQuizResponse>(`${base}/get_quiz`, {
     method: 'GET',
   });
@@ -127,7 +146,7 @@ export async function getDiagnosticQuiz(): Promise<DiagnosticQuizResponse | null
 export async function submitDiagnosticQuiz(
   answers: DiagnosticStudentAnswerPayload[]
 ): Promise<DiagnosticSubmitResponse | null> {
-  const base = getBaseUrl();
+  const base = getQuizBaseUrl();
   if (!base) return null;
 
   const result = await fetchJson<DiagnosticSubmitResponse>(`${base}/submit_quiz`, {
@@ -170,7 +189,74 @@ export function getSavedDiagnosticResult(): DiagnosticSubmitResponse | null {
   }
 }
 
-// —— Plan (after diagnostic + preferences) ——
+// ==============================
+// Lesson quiz
+// ==============================
+
+export interface LessonQuizApiQuestion {
+  question_id: number;
+  subject: string;
+  topic: string;
+  question_text: string;
+  display_question: string;
+  options: string[];
+  correct_letter: string;
+  reference_explanation: string;
+}
+
+export interface LessonQuizResponse {
+  status: string;
+  title: string;
+  topic: string;
+  questions: LessonQuizApiQuestion[];
+}
+
+export interface LessonQuizSubmitResponse {
+  status: string;
+  topic: string;
+  total_score: number;
+  total_questions: number;
+  total_percentage: number;
+  performance_by_subject: QuizPerformanceItem[];
+  detailed_results: QuizDetailedResult[];
+}
+
+export async function getLessonQuiz(
+  topic: string,
+  questionCount = 5
+): Promise<LessonQuizResponse | null> {
+  const base = getQuizBaseUrl();
+  if (!base) return null;
+
+  return fetchJson<LessonQuizResponse>(`${base}/lesson_quiz/get`, {
+    method: 'POST',
+    body: JSON.stringify({
+      topic,
+      question_count: questionCount,
+    }),
+  });
+}
+
+export async function submitLessonQuiz(
+  topic: string,
+  answers: DiagnosticStudentAnswerPayload[]
+): Promise<LessonQuizSubmitResponse | null> {
+  const base = getQuizBaseUrl();
+  if (!base) return null;
+
+  return fetchJson<LessonQuizSubmitResponse>(`${base}/lesson_quiz/submit`, {
+    method: 'POST',
+    body: JSON.stringify({
+      topic,
+      answers,
+    }),
+  });
+}
+
+// ==============================
+// Plan
+// ==============================
+
 export interface GeneratePlanPayload {
   userId?: string;
   level: string;
@@ -196,15 +282,19 @@ export interface GeneratedPlanItem {
 }
 
 export async function generatePlan(payload: GeneratePlanPayload): Promise<GeneratedPlanItem[] | null> {
-  const base = getBaseUrl();
+  const base = getQuizBaseUrl();
   if (!base) return null;
+
   return fetchJson<GeneratedPlanItem[]>(`${base}/ai/plan`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-// —— Flashcards (per module) ——
+// ==============================
+// Flashcards (RAG مباشرة)
+// ==============================
+
 export interface FlashcardItem {
   id: string;
   front: string;
@@ -212,15 +302,19 @@ export interface FlashcardItem {
 }
 
 export async function generateFlashcards(moduleId: string, topic?: string): Promise<FlashcardItem[] | null> {
-  const base = getBaseUrl();
+  const base = getRagBaseUrl();
   if (!base) return null;
+
   return fetchJson<FlashcardItem[]>(`${base}/ai/flashcards`, {
     method: 'POST',
     body: JSON.stringify({ moduleId, topic }),
   });
 }
 
-// —— Quiz (per module) ——
+// ==============================
+// General quiz per module
+// ==============================
+
 export interface QuizQuestion {
   question: string;
   options: string[];
@@ -233,15 +327,19 @@ export interface GeneratedQuiz {
 }
 
 export async function generateQuiz(moduleId: string, topic?: string): Promise<GeneratedQuiz | null> {
-  const base = getBaseUrl();
+  const base = getQuizBaseUrl();
   if (!base) return null;
+
   return fetchJson<GeneratedQuiz>(`${base}/ai/quiz`, {
     method: 'POST',
     body: JSON.stringify({ moduleId, topic }),
   });
 }
 
-// —— Final exam (per plan) ——
+// ==============================
+// Final exam
+// ==============================
+
 export interface FinalExamQuestion {
   subject: string;
   question: string;
@@ -250,15 +348,19 @@ export interface FinalExamQuestion {
 }
 
 export async function generateFinalExam(planId: string, level?: string): Promise<FinalExamQuestion[] | null> {
-  const base = getBaseUrl();
+  const base = getQuizBaseUrl();
   if (!base) return null;
+
   return fetchJson<FinalExamQuestion[]>(`${base}/ai/final-exam`, {
     method: 'POST',
     body: JSON.stringify({ planId, level }),
   });
 }
 
-// —— Module content (slides + optional quick questions) ——
+// ==============================
+// Module content / slides (RAG مباشرة)
+// ==============================
+
 export interface SlideItem {
   title: string;
   content: string;
@@ -328,7 +430,6 @@ function curriculumToModuleContent(
   if (!subjects || !Array.isArray(subjects) || subjects.length === 0) return null;
 
   const parsed = parseModuleId(moduleId);
-
   const targetSubject = normalizeText(parsed.subject || '');
   const targetLesson = normalizeText(parsed.lessonTitle || '');
   const targetUnit = normalizeText(parsed.unitTitle || '');
@@ -396,7 +497,7 @@ export async function getModuleContent(moduleId: string, topic?: string): Promis
   const savedModule = curriculumToModuleContent(savedCurriculum, moduleId);
   if (savedModule) return savedModule;
 
-  const base = getBaseUrl();
+  const base = getRagBaseUrl();
   if (!base) return null;
 
   return fetchJson<ModuleContentResponse>(`${base}/ai/module-content`, {
@@ -406,5 +507,5 @@ export async function getModuleContent(moduleId: string, topic?: string): Promis
 }
 
 export function isAiApiConfigured(): boolean {
-  return getBaseUrl().length > 0;
+  return getQuizBaseUrl().length > 0 || getRagBaseUrl().length > 0;
 }
