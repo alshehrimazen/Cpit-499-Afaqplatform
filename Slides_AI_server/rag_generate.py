@@ -16,7 +16,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = "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"  # أو حطه مباشرة
+OPENROUTER_API_KEY = ""  # أو حطه مباشرة
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
