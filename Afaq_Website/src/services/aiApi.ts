@@ -316,6 +316,12 @@ export async function generateFlashcards(moduleId: string, topic?: string): Prom
 // ==============================
 
 export interface QuizQuestion {
+  question_id: number;
+  subject: string;
+  topic: string;
+  question_text: string;
+  reference_explanation: string;
+  correct_letter: string;
   question: string;
   options: string[];
   correctAnswer: number;
@@ -323,7 +329,29 @@ export interface QuizQuestion {
 
 export interface GeneratedQuiz {
   title: string;
+  topic: string;
   questions: QuizQuestion[];
+}
+
+export interface CheckQuizAnswerPayload {
+  question_id: number;
+  subject: string;
+  topic: string;
+  question_text: string;
+  user_answer: number;
+  correct_letter: string;
+  reference_explanation: string;
+}
+
+export interface CheckQuizAnswerResponse {
+  status: string;
+  question_id: number;
+  topic: string;
+  subject: string;
+  is_correct: boolean;
+  user_answer: string;
+  correct_letter: string;
+  ai_explanation: string;
 }
 
 export async function generateQuiz(moduleId: string, topic?: string): Promise<GeneratedQuiz | null> {
@@ -332,7 +360,19 @@ export async function generateQuiz(moduleId: string, topic?: string): Promise<Ge
 
   return fetchJson<GeneratedQuiz>(`${base}/ai/quiz`, {
     method: 'POST',
-    body: JSON.stringify({ moduleId, topic }),
+    body: JSON.stringify({ moduleId, topic, question_count: 5 }),
+  });
+}
+
+export async function checkQuizAnswer(
+  payload: CheckQuizAnswerPayload
+): Promise<CheckQuizAnswerResponse | null> {
+  const base = getQuizBaseUrl();
+  if (!base) return null;
+
+  return fetchJson<CheckQuizAnswerResponse>(`${base}/ai/quiz/check`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 

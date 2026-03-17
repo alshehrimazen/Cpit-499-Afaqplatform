@@ -8,7 +8,7 @@ from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Union
 import uvicorn
 from transformers import (
     AutoModelForCausalLM,
@@ -18,7 +18,6 @@ from transformers import (
     LogitsProcessorList,
 )
 from peft import PeftModel
-from typing import Optional
 
 
 # ============================================
@@ -35,7 +34,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# رابط السيرفر الثاني
+# رابط rag_generation.py
 CURRICULUM_API_URL = "http://127.0.0.1:9000/generate"
 
 # ============================================
@@ -85,7 +84,7 @@ class SingleQuestionCheckRequest(BaseModel):
     subject: str
     topic: str
     question_text: str
-    user_answer: str
+    user_answer: Union[int, str]
     correct_letter: str
     reference_explanation: str
 
@@ -123,15 +122,31 @@ device = next(model.parameters()).device
 print("✅ تم تحميل المودل بنجاح ومستعد لاستقبال الطلبات!")
 
 # ============================================
-# إعداد الفلتر
+# إعدادات التوليد لمنع الهلوسة والصياغة الطبيعية
+# ============================================
+
+GENERATION_CONFIG = dict(
+    max_new_tokens=200,      # زيادة بسيطة ليتمكن من إنهاء الشرح بشكل مريح
+    do_sample=True,         # تفعيل التنوع ليعيد الصياغة بأسلوبه
+    temperature=0.3,        # حرارة منخفضة ليحافظ على المعلومات المرجعية ولا يهلوس
+    top_p=0.85,             # تحديد أعلى الاحتمالات لضمان دقة الكلمات
+    top_k=40,
+    repetition_penalty=1.1, # عقوبة تكرار خفيفة جداً
+    # تم حذف no_repeat_ngram_size لأنه السبب الرئيسي للهلوسة في الشرح العربي
+)
+
+
+# ============================================
+# الفلتر
 # ============================================
 
 class StrictLanguageLogitsProcessor(LogitsProcessor):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.suppressed_tokens = []
+
         bad_chars_pattern = re.compile(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7a3\u0400-\u04FF]')
-        english_word_pattern = re.compile(r'[a-zA-Z]{5,}')
+        english_word_pattern = re.compile(r'[a-zA-Z]{3,}')
 
         for token_id in range(len(tokenizer)):
             try:
@@ -223,16 +238,19 @@ def index_to_letter(index_or_value) -> str:
     if isinstance(index_or_value, int):
         mapping = {0: "أ", 1: "ب", 2: "ج", 3: "د"}
         return mapping.get(index_or_value, "")
+
     value = str(index_or_value).strip()
+
     if value in ["0", "1", "2", "3"]:
         return {"0": "أ", "1": "ب", "2": "ج", "3": "د"}[value]
+
     if value in ["أ", "ب", "ج", "د"]:
         return value
+
     return ""
 
-
 # ============================================
-# دالة سحب أسئلة التشخيص / النهائي
+# أسئلة التشخيص / النهائي
 # ============================================
 
 def get_balanced_questions(questions_per_subject=2):
@@ -278,9 +296,8 @@ def get_balanced_questions(questions_per_subject=2):
 
     return final_questions
 
-
 # ============================================
-# أسئلة كويز الدرس من Questions.jsonl
+# أسئلة الدرس من Questions.jsonl
 # ============================================
 
 def get_topic_questions_exact(topic: str):
@@ -323,51 +340,73 @@ def get_topic_questions_exact(topic: str):
 
     return matched
 
-
 # ============================================
-# شرح سؤال واحد بالمودل
+# شرح السؤال بالمودل (محدث بنظام ChatML وبدون كلمة "الطالب")
 # ============================================
-
 def generate_ai_explanation(item: StudentAnswer) -> str:
-    prompt = f"""### النظام:
-أنت معلم خبير وصارم علمياً.
-اكتب فقرة واحدة فقط تشرح بشكل مباشر ودقيق سبب صحة الإجابة.
-اعتمد على المعلومات المرجعية المرفقة.
-يمنع استخدام الخطوات المرقمة، ويمنع اختراع مصادر أو أمثلة خارجية.
+    q_text = item.question_text
+    correct_ans = item.correct_letter
+    
+    # التحقق من وجود نص مرجعي
+    ref_explanation = (item.reference_explanation or "").strip()
+    
+    # إذا لم يكن هناك نص مرجعي، نمنعه من الهلوسة ونعطيه رداً ثابتاً
+    if not ref_explanation or len(ref_explanation) < 5:
+        return f"الإجابة المدخلة غير صحيحة. الإجابة الصحيحة هي ({correct_ans})."
 
-### السؤال:
-{item.question_text}
+    # تقوية البرومبت ليصبح أكثر صرامة
+    messages = [
+        {
+            "role": "system", 
+            "content": """أنت مساعد تعليمي دقيق جداً. مهمتك صياغة شرح مباشر ومبسط بناءً على 'النص المرجعي' المرفق لك *فقط لا غير*. 
+            - يمنع منعاً باتاً إضافة أي معلومات علمية، أو مصطلحات، أو أرقام، أو حروف غير موجودة في النص المرجعي.
+            - إذا لم تجد الإجابة الكافية في النص المرجعي، اكتفِ بتوضيح الخيار الصحيح فقط.
+            - يمنع استخدام كلمة 'الطالب'. وجه الحديث للمستخدم مباشرة."""
+        },
+        {
+            "role": "user", 
+            "content": f"""السؤال: {q_text}
+الإجابة المدخلة: {item.user_answer}
+الإجابة الصحيحة: {correct_ans}
 
-### المعلومات المرجعية:
-{item.reference_explanation}
+[النص المرجعي الحصري للشرح]: 
+{ref_explanation}
 
-### الشرح:
-الإجابة الصحيحة هي ({item.correct_letter}) لأن"""
+المطلوب:
+1. ابدأ بتوضيح ما إذا كانت الإجابة المدخلة صحيحة أم خاطئة.
+2. أعد صياغة [النص المرجعي الحصري] فقط لشرح السبب. لا تضف أي حرف أو معلومة من خارج هذا النص."""
+        }
+    ]
 
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+    # باقي كود التوليد كما هو
+    text_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer(text_input, return_tensors="pt").to(device)
+
+    terminators = [
+        tokenizer.eos_token_id,
+        tokenizer.convert_tokens_to_ids("<|im_end|>")
+    ]
 
     with torch.no_grad():
         output = model.generate(
-            **inputs,
-            max_new_tokens=150,
-            do_sample=False,
-            pad_token_id=tokenizer.eos_token_id,
-            logits_processor=logits_processor
+             **inputs,
+             **GENERATION_CONFIG,
+             pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+             eos_token_id=terminators, 
+             logits_processor=logits_processor
         )
 
-    full_text = tokenizer.decode(output[0], skip_special_tokens=True)
-    explanation = "لم يتمكن المودل من التوليد."
+    input_length = inputs.input_ids.shape[1]
+    generated_ids = output[0][input_length:]
+    explanation = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+    explanation = re.sub(r"\s+", " ", explanation).strip()
 
-    if "### الشرح:\n" in full_text:
-        explanation = full_text.split("### الشرح:\n")[1].strip()
-        if not explanation.startswith("الإجابة الصحيحة"):
-            if "لأن" in explanation:
-                explanation = f"الإجابة الصحيحة هي ({item.correct_letter}) لأن " + explanation.split("لأن", 1)[-1].strip()
-            else:
-                explanation = f"الإجابة الصحيحة هي ({item.correct_letter}) لأن {explanation}"
-        explanation = re.sub(r'//\(.*?\)', '', explanation).strip()
+    if "الإجابة الصحيحة" not in explanation and correct_ans not in explanation:
+         explanation = f"الإجابة الصحيحة هي ({correct_ans}). " + explanation
 
     return explanation
+
+
 
 
 # ============================================
@@ -437,7 +476,6 @@ def evaluate_answers_core(answers: List[StudentAnswer]):
         "student_profile": "، ".join(profile_parts)
     }
 
-
 # ============================================
 # Endpoints الأصلية
 # ============================================
@@ -474,10 +512,10 @@ async def evaluate_quiz(submission: QuizSubmission):
     base_result["curriculum"] = curriculum
     return base_result
 
-
 # ============================================
 # Endpoints متوافقة مع الفرونت
 # ============================================
+
 @app.post("/ai/quiz")
 async def ai_quiz(payload: AIQuizRequest = AIQuizRequest()):
     topic = (
@@ -486,7 +524,6 @@ async def ai_quiz(payload: AIQuizRequest = AIQuizRequest()):
         or (payload.lessonTitle or "").strip()
     )
 
-    # إذا moduleId جاي JSON string
     if not topic and payload.moduleId:
         try:
             parsed = json.loads(payload.moduleId)
@@ -533,6 +570,7 @@ async def ai_quiz(payload: AIQuizRequest = AIQuizRequest()):
         "questions": questions
     }
 
+
 @app.post("/ai/quiz/check")
 async def ai_quiz_check(payload: SingleQuestionCheckRequest):
     normalized_user_answer = index_to_letter(payload.user_answer)
@@ -575,7 +613,6 @@ async def ai_quiz_submit(submission: LessonQuizSubmission):
     result = evaluate_answers_core(submission.answers)
     result["topic"] = topic
     return result
-
 
 # ============================================
 # Endpoints كويز الدرس
@@ -628,7 +665,6 @@ async def submit_lesson_quiz(submission: LessonQuizSubmission):
     result = evaluate_answers_core(submission.answers)
     result["topic"] = topic
     return result
-
 
 # ============================================
 # تشغيل السيرفر

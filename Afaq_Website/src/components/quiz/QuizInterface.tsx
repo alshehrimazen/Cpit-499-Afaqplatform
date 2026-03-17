@@ -3,7 +3,13 @@ import { Menu, CheckCircle, XCircle, ArrowLeft, Trophy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
-import { generateQuiz, isAiApiConfigured, type GeneratedQuiz } from '../../services/aiApi';
+import {
+  generateQuiz,
+  checkQuizAnswer,
+  isAiApiConfigured,
+  type GeneratedQuiz,
+  type CheckQuizAnswerResponse,
+} from '../../services/aiApi';
 
 interface QuizInterfaceProps {
   moduleId: string;
@@ -11,19 +17,36 @@ interface QuizInterfaceProps {
   onToggleSidebar: () => void;
 }
 
-export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInterfaceProps) {
+interface QuestionFeedback {
+  is_correct: boolean;
+  correct_letter: string;
+  ai_explanation: string;
+}
+
+export function QuizInterface({
+  moduleId,
+  onComplete,
+  onToggleSidebar,
+}: QuizInterfaceProps) {
   const [quiz, setQuiz] = useState<GeneratedQuiz | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submittingAnswer, setSubmittingAnswer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+
   const [answers, setAnswers] = useState<number[]>([]);
+  const [answerResults, setAnswerResults] = useState<boolean[]>([]);
+  const [feedbacks, setFeedbacks] = useState<QuestionFeedback[]>([]);
+
   const [showFeedback, setShowFeedback] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     let active = true;
+
     const load = async () => {
       setLoading(true);
       setError(null);
@@ -31,6 +54,8 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
       setCurrentQuestion(0);
       setSelectedAnswer(null);
       setAnswers([]);
+      setAnswerResults([]);
+      setFeedbacks([]);
       setShowFeedback(false);
       setShowResults(false);
 
@@ -53,6 +78,7 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
     };
 
     load();
+
     return () => {
       active = false;
     };
@@ -84,36 +110,76 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
 
   const question = quiz.questions[currentQuestion];
   const progress = ((currentQuestion + 1) / quiz.questions.length) * 100;
+  const currentFeedback = feedbacks[currentQuestion];
 
   const handleAnswerSelect = (answerIndex: number) => {
-    if (showFeedback) return;
+    if (showFeedback || submittingAnswer) return;
     setSelectedAnswer(answerIndex);
   };
 
-  const handleSubmitAnswer = () => {
+  const handleSubmitAnswer = async () => {
     if (selectedAnswer === null) return;
-    setShowFeedback(true);
+
+    try {
+      setSubmittingAnswer(true);
+      setError(null);
+
+      const result: CheckQuizAnswerResponse | null = await checkQuizAnswer({
+        question_id: question.question_id,
+        subject: question.subject,
+        topic: question.topic,
+        question_text: question.question_text,
+        user_answer: selectedAnswer,
+        correct_letter: question.correct_letter,
+        reference_explanation: question.reference_explanation,
+      });
+
+      if (!result) {
+        setError('تعذر تصحيح الإجابة حالياً.');
+        return;
+      }
+
+      const updatedAnswers = [...answers];
+      updatedAnswers[currentQuestion] = selectedAnswer;
+      setAnswers(updatedAnswers);
+
+      const updatedResults = [...answerResults];
+      updatedResults[currentQuestion] = result.is_correct;
+      setAnswerResults(updatedResults);
+
+      const updatedFeedbacks = [...feedbacks];
+      updatedFeedbacks[currentQuestion] = {
+        is_correct: result.is_correct,
+        correct_letter: result.correct_letter,
+        ai_explanation: result.ai_explanation || '',
+      };
+      setFeedbacks(updatedFeedbacks);
+
+      setShowFeedback(true);
+    } catch (err) {
+      console.error(err);
+      setError('حدث خطأ أثناء تصحيح الإجابة.');
+    } finally {
+      setSubmittingAnswer(false);
+    }
   };
 
   const handleNext = () => {
     if (selectedAnswer === null) return;
 
-    const newAnswers = [...answers, selectedAnswer];
-    setAnswers(newAnswers);
-
     if (currentQuestion < quiz.questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
-      setSelectedAnswer(null);
+      const nextIndex = currentQuestion + 1;
+      setCurrentQuestion(nextIndex);
+      setSelectedAnswer(answers[nextIndex] ?? null);
       setShowFeedback(false);
+      setError(null);
     } else {
       setShowResults(true);
     }
   };
 
   const calculateScore = () => {
-    const correctAnswers = answers.filter((answer, index) => 
-      answer === quiz.questions[index].correctAnswer
-    ).length;
+    const correctAnswers = answerResults.filter(Boolean).length;
     return Math.round((correctAnswers / quiz.questions.length) * 100);
   };
 
@@ -136,11 +202,13 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
         <div className="p-4 lg:p-8 flex items-center justify-center min-h-[calc(100vh-73px)]">
           <Card className="max-w-2xl w-full p-8 shadow-xl">
             <div className="text-center">
-              <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 ${
-                passed 
-                  ? 'bg-gradient-to-br from-green-500 to-blue-500' 
-                  : 'bg-gradient-to-br from-orange-500 to-red-500'
-              }`}>
+              <div
+                className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 ${
+                  passed
+                    ? 'bg-gradient-to-br from-green-500 to-blue-500'
+                    : 'bg-gradient-to-br from-orange-500 to-red-500'
+                }`}
+              >
                 {passed ? (
                   <Trophy className="w-12 h-12 text-white" />
                 ) : (
@@ -151,11 +219,11 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
               <h2 className="text-3xl mb-4">
                 {passed ? 'عمل ممتاز!' : 'استمر في التدريب!'}
               </h2>
-              
+
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-8 mb-8">
                 <p className="text-6xl mb-2">{score}%</p>
                 <p className="text-gray-600">
-                  {answers.filter((answer, index) => answer === quiz.questions[index].correctAnswer).length} من {quiz.questions.length} صحيح
+                  {answerResults.filter(Boolean).length} من {quiz.questions.length} صحيح
                 </p>
               </div>
 
@@ -163,7 +231,7 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
                 <h3 className="text-xl mb-4">ملخص الأداء</h3>
                 <div className="space-y-3">
                   {quiz.questions.map((q, index: number) => {
-                    const isCorrect = answers[index] === q.correctAnswer;
+                    const isCorrect = answerResults[index];
                     return (
                       <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
                         {isCorrect ? (
@@ -199,9 +267,10 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
     );
   }
 
+  const correctOptionIndex = question.correctAnswer;
+
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="bg-white border-b sticky top-0 z-30">
         <div className="px-4 py-4 flex items-center justify-between">
           <button onClick={onToggleSidebar} className="lg:hidden">
@@ -213,23 +282,23 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
       </header>
 
       <div className="p-4 lg:p-8 max-w-4xl mx-auto">
-        {/* Progress */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600">سؤال {currentQuestion + 1} من {quiz.questions.length}</span>
+            <span className="text-gray-600">
+              سؤال {currentQuestion + 1} من {quiz.questions.length}
+            </span>
             <span className="text-gray-600">{progress.toFixed(0)}% مكتمل</span>
           </div>
           <Progress value={progress} className="h-2" />
         </div>
 
-        {/* Question */}
         <Card className="p-8 lg:p-12 mb-8 shadow-xl">
           <h2 className="text-2xl mb-8">{question.question}</h2>
 
           <div className="space-y-4 mb-8">
             {question.options.map((option: string, index: number) => {
               const isSelected = selectedAnswer === index;
-              const isCorrect = index === question.correctAnswer;
+              const isCorrect = index === correctOptionIndex;
               const showCorrect = showFeedback && isCorrect;
               const showIncorrect = showFeedback && isSelected && !isCorrect;
 
@@ -237,7 +306,7 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
                 <button
                   key={index}
                   onClick={() => handleAnswerSelect(index)}
-                  disabled={showFeedback}
+                  disabled={showFeedback || submittingAnswer}
                   className={`w-full p-4 rounded-lg border-2 transition-all text-right flex items-center gap-3 ${
                     showCorrect
                       ? 'border-green-500 bg-green-50'
@@ -254,10 +323,14 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
                     ) : showIncorrect ? (
                       <XCircle className="w-6 h-6 text-red-500" />
                     ) : (
-                      <div className={`w-6 h-6 rounded-full border-2 ${
-                        isSelected ? 'border-purple-500 bg-purple-500' : 'border-gray-300'
-                      }`}>
-                        {isSelected && <div className="w-full h-full rounded-full bg-white scale-50" />}
+                      <div
+                        className={`w-6 h-6 rounded-full border-2 ${
+                          isSelected ? 'border-purple-500 bg-purple-500' : 'border-gray-300'
+                        }`}
+                      >
+                        {isSelected && (
+                          <div className="w-full h-full rounded-full bg-white scale-50" />
+                        )}
                       </div>
                     )}
                   </div>
@@ -267,18 +340,28 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
             })}
           </div>
 
-          {showFeedback && (
-            <div className={`p-4 rounded-lg mb-6 ${
-              selectedAnswer === question.correctAnswer
-                ? 'bg-green-50 border border-green-200'
-                : 'bg-red-50 border border-red-200'
-            }`}>
-              <p className={selectedAnswer === question.correctAnswer ? 'text-green-800' : 'text-red-800'}>
-                {selectedAnswer === question.correctAnswer
-                  ? '✓ صحيح! أحسنت!'
-                  : `✗ غير صحيح. الإجابة الصحيحة هي: ${question.options[question.correctAnswer]}`
-                }
-              </p>
+          {error && (
+            <div className="p-4 rounded-lg mb-6 bg-red-50 border border-red-200 text-red-700">
+              {error}
+            </div>
+          )}
+
+          {showFeedback && currentFeedback && (
+            <div
+              className={`p-4 rounded-lg mb-6 ${
+                currentFeedback.is_correct
+                  ? 'bg-green-50 border border-green-200'
+                  : 'bg-red-50 border border-red-200'
+              }`}
+            >
+  
+
+              <div className="bg-white/70 rounded-lg p-4 border border-gray-200 text-right">
+                <p className="text-sm text-gray-500 mb-2">شرح المودل:</p>
+                <p className="text-gray-800 leading-8">
+                  {currentFeedback.ai_explanation || 'لم يتم إرجاع شرح.'}
+                </p>
+              </div>
             </div>
           )}
 
@@ -286,10 +369,10 @@ export function QuizInterface({ moduleId, onComplete, onToggleSidebar }: QuizInt
             {!showFeedback ? (
               <Button
                 onClick={handleSubmitAnswer}
-                disabled={selectedAnswer === null}
+                disabled={selectedAnswer === null || submittingAnswer}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
-                إرسال الإجابة
+                {submittingAnswer ? 'جاري التصحيح...' : 'إرسال الإجابة'}
               </Button>
             ) : (
               <Button
