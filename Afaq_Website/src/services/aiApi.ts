@@ -6,7 +6,7 @@
 
 const getQuizBaseUrl = (): string => {
   const base = import.meta.env?.VITE_QUIZ_API_BASE_URL;
-  if (!base) return 'https://social-yaks-fold.loca.lt'; // كرابط احتياطي في حال لم يقرأ من الـ .env
+  if (!base) return 'https://common-streets-guess.loca.lt'; // كرابط احتياطي في حال لم يقرأ من الـ .env
   
   // إزالة أي شرطة مائلة من النهاية لتوحيد الشكل
   return base.trim().replace(/\/+$/, '');

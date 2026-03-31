@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Brain, CheckCircle, Circle, ArrowRight, BarChart3, GraduationCap } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
+import { getDiagnosticQuiz, submitDiagnosticQuiz } from '../../services/aiApi';
 
 interface DiagnosticTestProps {
   onComplete: (level: string) => void;
@@ -56,10 +57,9 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const res  = await fetch("http://localhost:8080/get_quiz");
-        const data = await res.json();
+        const data = await getDiagnosticQuiz();
 
-        if (data.status === "success") {
+        if (data && data.status === "success") {
           const formatted = data.data.map((q: any) => {
             let rawText = q.question_text;
             rawText = rawText.replace(/المادة:\s*.*?\.\s*السؤال:\s*/, "");
@@ -194,23 +194,10 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
         })),
       };
       try {
-        const res    = await fetch("http://localhost:8080/submit_quiz", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify(submission),
-        });
-        const result = await res.json();
+        const result = await submitDiagnosticQuiz(submission.answers);
 
-        if (result.status === "success") {
+        if (result && result.status === "success") {
           setQuizResult(result);
-
-          if (result.curriculum) {
-            localStorage.setItem("afaq_curriculum", JSON.stringify(result.curriculum));
-          }
-
-          if (result.student_profile) {
-            localStorage.setItem("afaq_student_profile", result.student_profile);
-          }
 
           localStorage.setItem("afaq_quiz_result", JSON.stringify(result));
 

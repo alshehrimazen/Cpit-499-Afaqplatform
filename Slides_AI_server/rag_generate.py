@@ -551,29 +551,26 @@ def split_math_context_into_slide_titles(lesson_title: str, ctx: str, n: int = 4
     slide_chunks = split_context_for_slides("رياضيات", ctx, n)
     return generate_distinct_slide_titles("رياضيات", lesson_title, slide_chunks)
 
+
 # =================================================
 # MAIN OPENROUTER CALL
 # =================================================
 def system_prompt() -> str:
     return (
-        "أنت مولّد شرائح تعليمية عربي (تحصيلي). "
+        "أنت مساعد تعليمي دقيق جداً. مهمتك تقسيم 'النص المرجعي' المسترجع إلى شرائح تعليمية. "
+        "يمنع منعاً باتاً إضافة أي معلومات علمية، أو مصطلحات، أو أرقام، أو حروف غير موجودة في النص المرجعي المرفق لك. "
         "أخرج JSON فقط دون أي نص إضافي. "
-        "اجعل عنوان كل شريحة قصيرًا جدًا. "
-        "اجعل شرح كل شريحة أوضح وأطول من النسخة المختصرة، "
-        "بحيث يكون شرحًا تعليميًا متماسكًا من 4 إلى 6 أسطر تقريبًا، "
-        "وليس جملة أو جملتين فقط. "
-        "اجعل كل شرائح الدرس مختلفة في الفكرة، ولا تكرر نفس الشرح أو نفس النقاط بين الشرائح. "
-        "اجعل key_points قصيرة وواضحة. "
-        "ممنوع placeholders مثل ___0__ أو __ _0__. "
-        "للرياضيات: استخدم فقط المعادلات والقوانين الموجودة في النص المسترجع من الداتا سيت "
-        "إذا كانت متوفرة، واكتبها بصيغة LaTeX داخل $...$. "
-        "لا تؤلف معادلات جديدة من عندك. "
-        "لا تكرر نفس المعادلة في جميع الشرائح إلا إذا لم يوجد غيرها."
+        "اجعل عنوان كل شريحة قصيرًا ومستخرجاً من النص. "
+        "اجعل الشرح مقتبساً من النص المرجعي فقط (من 4 إلى 6 أسطر). "
+        "اجعل key_points مستخرجة حرفياً من النص كنقاط قصيرة. "
+        "ممنوع استخدام placeholders مثل ___0__ أو __ _0__. "
+        "للرياضيات: استخدم فقط المعادلات والقوانين الموجودة في النص المسترجع، ولا تؤلف معادلات جديدة."
     )
+
 
 def openrouter_one_call(prompt: str) -> str:
     if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY غير موجود. حطه في متغير البيئة أو داخل الكود.")
+        raise HTTPException(status_code=401, detail="Missing API Key. Please provide OPENROUTER_API_KEY")
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -612,6 +609,7 @@ def openrouter_one_call(prompt: str) -> str:
         raise RuntimeError(f"OpenRouter JSON بدون choices: {json.dumps(data, ensure_ascii=False)[:250]}")
 
     return data["choices"][0]["message"]["content"]
+
 
 # =================================================
 # TEMPLATE
@@ -688,6 +686,7 @@ def build_template(profile: list[dict]) -> tuple[dict, dict]:
 
     return template, ctx_map
 
+
 # =================================================
 # LOCAL REPAIR
 # =================================================
@@ -749,10 +748,14 @@ def repair_with_local_context(output_json: dict, ctx_map: dict) -> dict:
 
     return output_json
 
+
 # =================================================
 # GENERATION PIPELINE
 # =================================================
 def generate_curriculum(student_profile_query: str) -> dict:
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=401, detail="Missing API Key. Please provide OPENROUTER_API_KEY")
+        
     profile = parse_student_profile(student_profile_query)
     if not profile:
         raise ValueError('الكويري فارغ أو غير صالح. مثال: "رياضيات ضعيف، أحياء ممتاز، فيزياء متوسط، كيمياء جيد"')
@@ -804,6 +807,7 @@ def generate_curriculum(student_profile_query: str) -> dict:
     save_partial(final)
     return final
 
+
 # =================================================
 # FRONTEND HELPERS
 # =================================================
@@ -835,6 +839,7 @@ def curriculum_to_module_content(curriculum: dict) -> dict:
         "quickQuestions": {}
     }
 
+
 def parse_module_id(module_id: str) -> dict:
     try:
         data = json.loads(module_id)
@@ -844,35 +849,32 @@ def parse_module_id(module_id: str) -> dict:
         pass
     return {"lessonTitle": module_id}
 
+
 def normalize_simple(text: str) -> str:
     text = (text or "").strip()
     text = re.sub(r"\s+", " ", text)
     return text
 
+
 def flashcards_system_prompt() -> str:
     return (
-        "أنت مساعد تعليمي عربي متخصص في صناعة بطاقات تعليمية قصيرة وواضحة للطلاب. "
+        "أنت مساعد تعليمي دقيق جداً. مهمتك استخراج بطاقات تعليمية (Flashcards) من 'النص المرجعي' للدرس *فقط لا غير*. "
+        "يمنع منعاً باتاً إضافة أي معلومات أو أسئلة من خارج النص المرجعي. "
         "أخرج JSON فقط دون أي نص إضافي. "
-        "المطلوب إنتاج بطاقات flashcards من الدرس. "
         "كل بطاقة يجب أن تحتوي على:\n"
-        '- "id": رقم أو نص قصير.\n'
-        '- "front": سؤال قصير وواضح ومفهوم.\n'
-        '- "back": جواب قصير جدًا ومباشر وصحيح علميًا.\n'
-        "الشروط:\n"
-        "1) لا تكرر نص السؤال داخل الجواب.\n"
-        "2) لا تعطِ إجابات مبتورة أو ناقصة.\n"
-        "3) لا تستخدم الرموز الغريبة أو النصوص غير المفهومة.\n"
-        "4) اجعل الجواب مختصرًا، غالبًا سطر واحد.\n"
-        "5) أخرج من 4 إلى 6 بطاقات فقط.\n"
-        "6) لا تكتب أي شرح خارج JSON.\n"
+        '- "id": رقم تسلسلي.\n'
+        '- "front": مصطلح أو فكرة موجودة في النص.\n'
+        '- "back": تعريفها أو الشرح الخاص بها مستخرج حرفياً من النص.\n'
+        "أخرج من 4 إلى 6 بطاقات فقط.\n"
         'صيغة الخرج تكون قائمة JSON مثل: [{"id":"1","front":"...","back":"..."}]'
     )
+
 
 def build_flashcards_fallback(lesson_title: str, slides: list[dict]) -> list[dict]:
     flashcards = []
 
     for idx, slide in enumerate(slides[:6], start=1):
-        title = (slide.get("title") or f"بطاقة {idx}").strip()
+        title = (slide.get("title") or f"مفهوم {idx}").strip()
         key_points = slide.get("key_points", []) or []
         explanation = (slide.get("explanation") or "").strip()
 
@@ -887,21 +889,20 @@ def build_flashcards_fallback(lesson_title: str, slides: list[dict]) -> list[dic
         answer = " ".join(words).strip()
 
         if not answer:
-            answer = "معلومة مختصرة"
-
-        question = f"ما المقصود بـ {title}؟" if title else f"ما الفكرة في البطاقة {idx}؟"
+            answer = "معلومة من الدرس"
 
         flashcards.append({
             "id": str(idx),
-            "front": question,
+            "front": title,
             "back": answer
         })
 
     return flashcards
 
+
 def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> list[dict]:
     if not OPENROUTER_API_KEY:
-        return build_flashcards_fallback(lesson_title, slides)
+        raise HTTPException(status_code=401, detail="Missing API Key. Please provide OPENROUTER_API_KEY")
 
     if not slides:
         return []
@@ -986,6 +987,7 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
 
     return flashcards[:6]
 
+
 def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
     parsed = parse_module_id(module_id)
 
@@ -1020,12 +1022,15 @@ def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
                     )
                 except Exception as e:
                     print("FLASHCARDS MODEL ERROR:", repr(e))
+                    if isinstance(e, HTTPException):
+                        raise e
                     return build_flashcards_fallback(
                         lesson.get("lesson_title", "هذا الدرس"),
                         slides
                     )
 
     return []
+
 
 # =================================================
 # API ROUTES
@@ -1104,6 +1109,7 @@ def flashcards_api(payload: FlashcardsRequest):
     except Exception as e:
         print("FLASHCARDS ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # =================================================
 # RUN LOCALHOST
