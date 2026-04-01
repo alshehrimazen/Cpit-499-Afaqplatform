@@ -295,9 +295,10 @@ export interface GeneratedPlanItem {
 
 export async function generatePlan(payload: GeneratePlanPayload): Promise<GeneratedPlanItem[] | null> {
   const base = getQuizBaseUrl();
+  const base2= 'http://127.0.0.1:9000';
   if (!base) return null;
 
-  return fetchJson<GeneratedPlanItem[]>(`${base}/ai/plan`, {
+  return fetchJson<GeneratedPlanItem[]>(`${base2}/generate`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

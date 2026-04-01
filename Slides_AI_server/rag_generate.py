@@ -16,7 +16,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = ""  # أو حطه مباشرة
+OPENROUTER_API_KEY = "" # تأكد من وضع مفتاحك هنا
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
@@ -66,12 +66,12 @@ _SUBJECT_CACHE = {}
 # =================================================
 # FASTAPI APP
 # =================================================
-app = FastAPI(title="Curriculum Generator API", version="1.0.0")
+app = FastAPI(title="Curriculum & Flashcards API", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -96,6 +96,20 @@ def normalize_subject_name(s: str) -> str:
     if s == "زياء":
         return "فيزياء"
     return s
+
+def normalize_simple(text: str) -> str:
+    text = (text or "").strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+def parse_module_id(module_id: str) -> dict:
+    try:
+        data = json.loads(module_id)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {"lessonTitle": module_id}
 
 _LATEX_PATTERNS = [
     r"\$\$.*?\$\$",
@@ -557,16 +571,20 @@ def split_math_context_into_slide_titles(lesson_title: str, ctx: str, n: int = 4
 # =================================================
 def system_prompt() -> str:
     return (
-        "أنت مساعد تعليمي دقيق جداً. مهمتك تقسيم 'النص المرجعي' المسترجع إلى شرائح تعليمية. "
-        "يمنع منعاً باتاً إضافة أي معلومات علمية، أو مصطلحات، أو أرقام، أو حروف غير موجودة في النص المرجعي المرفق لك. "
+        "أنت مولّد شرائح تعليمية عربي (تحصيلي). "
         "أخرج JSON فقط دون أي نص إضافي. "
-        "اجعل عنوان كل شريحة قصيرًا ومستخرجاً من النص. "
-        "اجعل الشرح مقتبساً من النص المرجعي فقط (من 4 إلى 6 أسطر). "
-        "اجعل key_points مستخرجة حرفياً من النص كنقاط قصيرة. "
-        "ممنوع استخدام placeholders مثل ___0__ أو __ _0__. "
-        "للرياضيات: استخدم فقط المعادلات والقوانين الموجودة في النص المسترجع، ولا تؤلف معادلات جديدة."
+        "اجعل عنوان كل شريحة قصيرًا جدًا. "
+        "اجعل شرح كل شريحة أوضح وأطول من النسخة المختصرة، "
+        "بحيث يكون شرحًا تعليميًا متماسكًا من 4 إلى 6 أسطر تقريبًا، "
+        "وليس جملة أو جملتين فقط. "
+        "اجعل كل شرائح الدرس مختلفة في الفكرة، ولا تكرر نفس الشرح أو نفس النقاط بين الشرائح. "
+        "اجعل key_points قصيرة وواضحة. "
+        "ممنوع placeholders مثل ___0__ أو __ _0__. "
+        "للرياضيات: استخدم فقط المعادلات والقوانين الموجودة في النص المسترجع من الداتا سيت "
+        "إذا كانت متوفرة، واكتبها بصيغة LaTeX داخل $...$. "
+        "لا تؤلف معادلات جديدة من عندك. "
+        "لا تكرر نفس المعادلة في جميع الشرائح إلا إذا لم يوجد غيرها."
     )
-
 
 def openrouter_one_call(prompt: str) -> str:
     if not OPENROUTER_API_KEY:
@@ -753,9 +771,6 @@ def repair_with_local_context(output_json: dict, ctx_map: dict) -> dict:
 # GENERATION PIPELINE
 # =================================================
 def generate_curriculum(student_profile_query: str) -> dict:
-    if not OPENROUTER_API_KEY:
-        raise HTTPException(status_code=401, detail="Missing API Key. Please provide OPENROUTER_API_KEY")
-        
     profile = parse_student_profile(student_profile_query)
     if not profile:
         raise ValueError('الكويري فارغ أو غير صالح. مثال: "رياضيات ضعيف، أحياء ممتاز، فيزياء متوسط، كيمياء جيد"')
@@ -809,7 +824,7 @@ def generate_curriculum(student_profile_query: str) -> dict:
 
 
 # =================================================
-# FRONTEND HELPERS
+# FRONTEND HELPERS & FLASHCARDS
 # =================================================
 def curriculum_to_module_content(curriculum: dict) -> dict:
     slides = []
@@ -840,22 +855,6 @@ def curriculum_to_module_content(curriculum: dict) -> dict:
     }
 
 
-def parse_module_id(module_id: str) -> dict:
-    try:
-        data = json.loads(module_id)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-    return {"lessonTitle": module_id}
-
-
-def normalize_simple(text: str) -> str:
-    text = (text or "").strip()
-    text = re.sub(r"\s+", " ", text)
-    return text
-
-
 def flashcards_system_prompt() -> str:
     return (
         "أنت مساعد تعليمي دقيق جداً. مهمتك استخراج بطاقات تعليمية (Flashcards) من 'النص المرجعي' للدرس *فقط لا غير*. "
@@ -868,7 +867,6 @@ def flashcards_system_prompt() -> str:
         "أخرج من 4 إلى 6 بطاقات فقط.\n"
         'صيغة الخرج تكون قائمة JSON مثل: [{"id":"1","front":"...","back":"..."}]'
     )
-
 
 def build_flashcards_fallback(lesson_title: str, slides: list[dict]) -> list[dict]:
     flashcards = []
@@ -898,7 +896,6 @@ def build_flashcards_fallback(lesson_title: str, slides: list[dict]) -> list[dic
         })
 
     return flashcards
-
 
 def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> list[dict]:
     if not OPENROUTER_API_KEY:
@@ -987,7 +984,6 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
 
     return flashcards[:6]
 
-
 def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
     parsed = parse_module_id(module_id)
 
@@ -1031,7 +1027,6 @@ def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
 
     return []
 
-
 # =================================================
 # API ROUTES
 # =================================================
@@ -1039,7 +1034,7 @@ def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
 def root():
     return {
         "message": "Curriculum Generator API is running",
-        "endpoint": "/generate"
+        "endpoints": ["/generate", "/ai/module-content", "/ai/flashcards"]
     }
 
 @app.get("/health")
@@ -1096,7 +1091,16 @@ def flashcards_api(payload: FlashcardsRequest):
             else:
                 query = "أحياء متوسط"
 
-        curriculum = generate_curriculum(query)
+        # محاولة قراءة المنهج من الملف لتسريع الاستجابة وتقليل استهلاك الـ API
+        curriculum = None
+        if os.path.exists(SAVE_PATH):
+            with open(SAVE_PATH, "r", encoding="utf-8") as f:
+                curriculum = json.load(f)
+                
+        # إذا لم يكن موجوداً، قم بإنشائه
+        if not curriculum:
+            curriculum = generate_curriculum(query)
+
         flashcards = curriculum_to_flashcards(curriculum, payload.moduleId)
 
         if not flashcards:
@@ -1109,7 +1113,6 @@ def flashcards_api(payload: FlashcardsRequest):
     except Exception as e:
         print("FLASHCARDS ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # =================================================
 # RUN LOCALHOST
