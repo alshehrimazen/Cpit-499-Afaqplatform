@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card } from '../ui/card';
+import { loginUser } from '../../lib/firebase';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string, isGuest?: boolean) => void;
@@ -15,10 +16,21 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(email, password);
+    setError('');
+    setLoading(true);
+    try {
+      await loginUser(email, password);
+      onLogin(email, password);
+    } catch (err: any) {
+      setError(getErrorMessage(err.code));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGuestAccess = () => {
@@ -28,7 +40,6 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
@@ -42,6 +53,13 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
 
         <Card className="p-8 shadow-xl border-2">
           <form onSubmit={handleSubmit} className="space-y-5">
+
+            {error && (
+              <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="email">البريد الإلكتروني</Label>
               <div className="relative">
@@ -76,9 +94,10 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
 
             <Button
               type="submit"
+              disabled={loading}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
-              تسجيل الدخول
+              {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
             </Button>
           </form>
 
@@ -125,4 +144,19 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
       </div>
     </div>
   );
+}
+
+function getErrorMessage(code: string) {
+  switch (code) {
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+    case 'auth/too-many-requests':
+      return 'تم تجاوز عدد المحاولات. حاول لاحقاً';
+    case 'auth/invalid-email':
+      return 'صيغة البريد الإلكتروني غير صحيحة';
+    default:
+      return 'حدث خطأ. حاول مرة أخرى';
+  }
 }

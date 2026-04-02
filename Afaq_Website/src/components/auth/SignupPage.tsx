@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card } from '../ui/card';
+import { signupUser } from '../../lib/firebase';
 
 interface SignupPageProps {
   onSignup: (name: string, email: string, password: string) => void;
@@ -17,20 +18,34 @@ export function SignupPage({ onSignup, onNavigate }: SignupPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     if (password !== confirmPassword) {
-      alert('كلمات المرور غير متطابقة!');
+      setError('كلمات المرور غير متطابقة');
       return;
     }
-    onSignup(name, email, password);
+    if (password.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+    setLoading(true);
+    try {
+      await signupUser(email, password);
+      onSignup(name, email, password);
+    } catch (err: any) {
+      setError(getErrorMessage(err.code));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
@@ -44,6 +59,13 @@ export function SignupPage({ onSignup, onNavigate }: SignupPageProps) {
 
         <Card className="p-8 shadow-xl border-2">
           <form onSubmit={handleSubmit} className="space-y-5">
+
+            {error && (
+              <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="name">الاسم الكامل</Label>
               <div className="relative">
@@ -110,9 +132,10 @@ export function SignupPage({ onSignup, onNavigate }: SignupPageProps) {
 
             <Button
               type="submit"
+              disabled={loading}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
-              إنشاء حساب
+              {loading ? 'جاري الإنشاء...' : 'إنشاء حساب'}
             </Button>
           </form>
 
@@ -140,4 +163,17 @@ export function SignupPage({ onSignup, onNavigate }: SignupPageProps) {
       </div>
     </div>
   );
+}
+
+function getErrorMessage(code: string) {
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'هذا البريد الإلكتروني مستخدم بالفعل';
+    case 'auth/weak-password':
+      return 'كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل';
+    case 'auth/invalid-email':
+      return 'صيغة البريد الإلكتروني غير صحيحة';
+    default:
+      return 'حدث خطأ. حاول مرة أخرى';
+  }
 }

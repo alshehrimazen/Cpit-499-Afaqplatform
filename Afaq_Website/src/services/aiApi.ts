@@ -7,7 +7,7 @@
 const getQuizBaseUrl = (): string => {
   const base = import.meta.env?.VITE_QUIZ_API_BASE_URL;
   if (!base) return 'https://common-streets-guess.loca.lt'; // كرابط احتياطي في حال لم يقرأ من الـ .env
-  
+
   // إزالة أي شرطة مائلة من النهاية لتوحيد الشكل
   return base.trim().replace(/\/+$/, '');
 };
@@ -21,13 +21,13 @@ const getRagBaseUrl = (): string => {
 
 const getAuthHeaders = (): Record<string, string> => {
   const token = import.meta.env?.VITE_AI_API_TOKEN;
-  
+
   // غيّرنا اسم الهيدر ليتوافق مع أداة Localtunnel الجديدة
-  const headers: Record<string, string> = { 
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Bypass-Tunnel-Reminder': 'true' // <--- هذا هو السطر الجديد الخاص بـ Localtunnel
   };
-  
+
   if (typeof token === 'string' && token.trim()) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -294,15 +294,69 @@ export interface GeneratedPlanItem {
 }
 
 export async function generatePlan(payload: GeneratePlanPayload): Promise<GeneratedPlanItem[] | null> {
-  const base = getQuizBaseUrl();
-  const base2= 'http://127.0.0.1:9000';
-  if (!base) return null;
+  const base2 = 'https://chilly-sites-lay.loca.lt';
 
-  return fetchJson<GeneratedPlanItem[]>(`${base2}/generate`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  const levelMap: Record<string, string> = {
+    'ممتاز (قوي)': 'ممتاز',
+    'متوسط': 'متوسط',
+    'ضعيف (يحتاج مراجعة)': 'ضعيف',
+  };
+
+  const savedResult = getSavedDiagnosticResult();
+  let query = '';
+
+  if (savedResult?.performance_by_subject?.length) {
+    query = savedResult.performance_by_subject
+      .map(p => `${p.subject} ${levelMap[p.level] ?? p.level}`)
+      .join('، ');
+  }
+
+  if (!query) query = 'متوسط';
+
+  try {
+    const res = await fetch(`${base2}/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Bypass-Tunnel-Reminder': 'true',
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!res.ok) return null;
+
+    const raw = await res.json();
+
+    // Validate structure from API
+    if (!raw || !raw.result || !Array.isArray(raw.result.subjects)) {
+      return null;
+    }
+
+    // Save the full result to localStorage so PlanDashboard can access subjects
+    localStorage.setItem('afaq_curriculum', JSON.stringify({
+      success: true,
+      query: raw.query,
+      result: raw.result
+    }));
+
+    // RETURN ONLY ONE PLAN: This removes the repetition in the plan list
+    return [{
+      id: "unified-main-plan",
+      title: "الخطة الدراسية الشاملة",
+      level: payload.level,
+      status: 'not-started' as const,
+      completionPercentage: 0,
+      completedModules: [],
+      quizScores: {},
+      createdAt: new Date().toISOString(),
+    }];
+
+  } catch (e) {
+    console.error('❌ generatePlan error:', e);
+    return null;
+  }
 }
+
 
 // ==============================
 // Flashcards (RAG مباشرة)
@@ -373,7 +427,7 @@ export interface CheckQuizAnswerResponse {
 
 export async function generateQuiz(topicName: string): Promise<GeneratedQuiz | null> {
   const base = getQuizBaseUrl();
-  
+
   // استخراج اسم الدرس الصافي إذا كان topicName عبارة عن JSON
   let cleanTopic = topicName;
   try {
@@ -389,13 +443,13 @@ export async function generateQuiz(topicName: string): Promise<GeneratedQuiz | n
 
   // الآن نرسل cleanTopic النظيف في الرابط
   const url = `${base}/ai/quiz?topic=${encodeURIComponent(cleanTopic)}&question_count=5`;
-  
+
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Bypass-Tunnel-Reminder": "true" 
+        "Bypass-Tunnel-Reminder": "true"
       }
     });
 
@@ -416,7 +470,7 @@ export async function checkQuizAnswer(
 ): Promise<CheckQuizAnswerResponse | null> {
   const base = getQuizBaseUrl();
   const url = `${base}/ai/quiz/check/`; // المسار مع شرطة مائلة لمنع 404
-  
+
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -428,8 +482,8 @@ export async function checkQuizAnswer(
     });
 
     if (!response.ok) {
-       console.error(`Error ${response.status}: ${response.statusText}`);
-       return null;
+      console.error(`Error ${response.status}: ${response.statusText}`);
+      return null;
     }
     return (await response.json()) as CheckQuizAnswerResponse;
   } catch (error) {

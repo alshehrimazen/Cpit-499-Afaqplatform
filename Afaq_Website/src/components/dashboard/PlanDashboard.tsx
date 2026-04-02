@@ -83,7 +83,7 @@ interface Subject {
 }
 
 const subjectStyleMap: Record<string, { icon: string; color: string }> = {
-    رياضيات: { icon: '📐', color: 'from-blue-500 to-blue-600' },
+  رياضيات: { icon: '📐', color: 'from-blue-500 to-blue-600' },
   فيزياء: { icon: '⚛️', color: 'from-purple-500 to-pink-600' },
   كيمياء: { icon: '🧪', color: 'from-green-500 to-green-600' },
   أحياء: { icon: '🧬', color: 'from-yellow-500 to-pink-600' },
@@ -112,25 +112,28 @@ function estimateLessonDuration(slidesCount: number): string {
 
 function buildSubjectsFromCurriculum(plan: StudyPlan): Subject[] {
   const curriculum = getSavedCurriculum();
+  // Extract the subjects array from the 'result' object saved by generatePlan
   const rawSubjects = curriculum?.result?.subjects;
 
-  if (!rawSubjects || !Array.isArray(rawSubjects) || rawSubjects.length === 0) {
+  if (!rawSubjects || !Array.isArray(rawSubjects)) {
     return [];
   }
 
   return rawSubjects.map((subject, subjectIndex) => {
-    const style = subjectStyleMap[subject.subject] || {
+    // Matches the subject name to your specific icons/colors
+    const normalizedName = normalizeArabicSubjectName(subject.subject);
+    const style = subjectStyleMap[normalizedName] || {
       icon: '📘',
       color: 'from-gray-500 to-gray-600',
     };
 
     const modules: Module[] = (subject.units || []).map((unit, unitIndex) => {
       const lessons: Lesson[] = (unit.lessons || []).map((lesson, lessonIndex) => {
+        // Unique ID for each lesson to track completion
         const payload = JSON.stringify({
           subject: subject.subject,
-          unitTitle: unit.unit_title || `وحدة ${unit.unit_number ?? unitIndex + 1}`,
+          unitTitle: unit.unit_title || `وحدة ${unitIndex + 1}`,
           lessonTitle: lesson.lesson_title,
-          lessonNumber: lesson.lesson_number ?? lessonIndex + 1,
           subjectIndex,
           unitIndex,
           lessonIndex,
@@ -141,15 +144,15 @@ function buildSubjectsFromCurriculum(plan: StudyPlan): Subject[] {
         return {
           id: payload,
           title: lesson.lesson_title,
-          duration: estimateLessonDuration(Array.isArray(lesson.slides) ? lesson.slides.length : 0),
+          duration: estimateLessonDuration(lesson.slides?.length || 0),
           status: isCompleted ? 'completed' : 'not-started',
         };
       });
 
       return {
-        id: `${subject.subject}-unit-${unit.unit_number ?? unitIndex + 1}`,
-        name: unit.unit_title || `وحدة ${unit.unit_number ?? unitIndex + 1}`,
-        description: `تحتوي على ${lessons.length} درس`,
+        id: `${subject.subject}-unit-${unitIndex}`,
+        name: unit.unit_title || `وحدة ${unitIndex + 1}`,
+        description: `تحتوي على ${lessons.length} دروس`,
         lessons,
       };
     });
@@ -399,11 +402,10 @@ export function PlanDashboard({
                                   key={lesson.id}
                                   className="flex items-center gap-3 p-3 bg-white rounded-lg hover:shadow-md transition-shadow"
                                 >
-                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                    lesson.status === 'completed'
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${lesson.status === 'completed'
                                       ? 'bg-green-100'
                                       : 'bg-gray-100'
-                                  }`}>
+                                    }`}>
                                     {lesson.status === 'completed' ? (
                                       <CheckCircle className="w-5 h-5 text-green-600" />
                                     ) : (
@@ -418,18 +420,17 @@ export function PlanDashboard({
                                         <Clock className="w-3 h-3" />
                                         {lesson.duration}
                                       </span>
-                                      <span className={`px-2 py-0.5 rounded-full ${
-                                        lesson.status === 'completed'
+                                      <span className={`px-2 py-0.5 rounded-full ${lesson.status === 'completed'
                                           ? 'bg-green-100 text-green-700'
                                           : lesson.status === 'in-progress'
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-gray-100 text-gray-600'
-                                      }`}>
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'bg-gray-100 text-gray-600'
+                                        }`}>
                                         {lesson.status === 'not-started'
                                           ? 'لم يبدأ'
                                           : lesson.status === 'in-progress'
-                                          ? 'قيد التقدم'
-                                          : 'مكتمل'}
+                                            ? 'قيد التقدم'
+                                            : 'مكتمل'}
                                       </span>
                                     </div>
                                   </div>

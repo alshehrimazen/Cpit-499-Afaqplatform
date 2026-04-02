@@ -44,15 +44,15 @@ const GRAD = 'linear-gradient(to right, #2563eb, #7c3aed)'; // from-blue-600 to-
 
 export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTestProps) {
 
-  const [questions, setQuestions]             = useState<DiagnosticQuestion[]>([]);
+  const [questions, setQuestions] = useState<DiagnosticQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers]                 = useState<number[]>([]);
-  const [selectedAnswer, setSelectedAnswer]   = useState<number | null>(null);
-  const [showResults, setShowResults]         = useState(false);
-  const [loading, setLoading]                 = useState(true);
-  const [submitting, setSubmitting]           = useState(false);
-  const [error, setError]                     = useState<string | null>(null);
-  const [quizResult, setQuizResult]           = useState<QuizResult | null>(null);
+  const [answers, setAnswers] = useState<number[]>([]);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
 
   useEffect(() => {
     const loadQuestions = async () => {
@@ -67,11 +67,11 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
             const optionsRegex = /(أ\)|أ-)\s*(.*?)\s*(ب\)|ب-)\s*(.*?)\s*(ج\)|ج-)\s*(.*?)\s*(د\)|د-)\s*(.*)/;
             const match = rawText.match(optionsRegex);
 
-            let mainQuestion     = rawText;
+            let mainQuestion = rawText;
             let extractedOptions = ["أ", "ب", "ج", "د"];
 
             if (match) {
-              mainQuestion     = rawText.split(/(أ\)|أ-)/)[0].trim();
+              mainQuestion = rawText.split(/(أ\)|أ-)/)[0].trim();
               extractedOptions = [
                 match[2].replace(/\.$/, "").trim(),
                 match[4].replace(/\.$/, "").trim(),
@@ -81,12 +81,12 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
             }
 
             return {
-              question_id:   q.question_id,
-              question:      mainQuestion,
-              options:       extractedOptions,
-              correctAnswer: ["أ","ب","ج","د"].indexOf(q.correct_letter),
-              subject:       q.subject,
-              originalText:  q.question_text,
+              question_id: q.question_id,
+              question: mainQuestion,
+              options: extractedOptions,
+              correctAnswer: ["أ", "ب", "ج", "د"].indexOf(q.correct_letter),
+              subject: q.subject,
+              originalText: q.question_text,
             };
           });
           setQuestions(formatted);
@@ -185,11 +185,11 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
       setSubmitting(true);
       const submission = {
         answers: newAnswers.map((answerIndex, i) => ({
-          question_id:           questions[i].question_id,
-          subject:               questions[i].subject || "عام",
-          question_text:         questions[i].originalText,
-          user_answer:           ["أ","ب","ج","د"][answerIndex],
-          correct_letter:        ["أ","ب","ج","د"][questions[i].correctAnswer],
+          question_id: questions[i].question_id,
+          subject: questions[i].subject || "عام",
+          question_text: questions[i].originalText,
+          user_answer: ["أ", "ب", "ج", "د"][answerIndex],
+          correct_letter: ["أ", "ب", "ج", "د"][questions[i].correctAnswer],
           reference_explanation: "",
         })),
       };
@@ -199,7 +199,7 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
         if (result && result.status === "success") {
           setQuizResult(result);
 
-          localStorage.setItem("afaq_quiz_result", JSON.stringify(result));
+          localStorage.setItem("afaq_diagnostic_result", JSON.stringify(result));
 
           setShowResults(true);
         } else {
@@ -215,7 +215,7 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
   const handleFinish = () => {
     if (!quizResult) return;
     let levelStr = "beginner";
-    if (quizResult.total_percentage >= 80)      levelStr = "advanced";
+    if (quizResult.total_percentage >= 80) levelStr = "advanced";
     else if (quizResult.total_percentage >= 60) levelStr = "intermediate";
     onComplete(levelStr);
   };
@@ -258,8 +258,8 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
               </h3>
               <div className="space-y-3">
                 {quizResult.performance_by_subject.map((perf, idx) => {
-                  let bg        = '#fff5f5';
-                  let border    = '#fca5a5';
+                  let bg = '#fff5f5';
+                  let border = '#fca5a5';
                   let textColor = '#dc2626';
                   if (perf.percentage >= 80) {
                     bg = '#f0fdf4'; border = '#86efac'; textColor = '#16a34a';
@@ -302,7 +302,7 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
   }
 
   const progress = ((currentQuestion + 1) / questions.length) * 100;
-  const question  = questions[currentQuestion];
+  const question = questions[currentQuestion];
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 rtl" dir="rtl">
@@ -356,16 +356,16 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
                   onClick={() => handleAnswerSelect(index)}
                   className="w-full p-4 rounded-xl flex items-center gap-3 text-right transition-all duration-200"
                   style={{
-                    border:     isSelected ? '2px solid #7c3aed' : '1.5px solid #e5e7eb',
+                    border: isSelected ? '2px solid #7c3aed' : '1.5px solid #e5e7eb',
                     background: isSelected ? '#f5f3ff' : '#ffffff',
-                    boxShadow:  isSelected ? '0 2px 12px rgba(124,58,237,0.12)' : 'none',
+                    boxShadow: isSelected ? '0 2px 12px rgba(124,58,237,0.12)' : 'none',
                   }}
                 >
                   <div
                     className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
                     style={{
                       background: isSelected ? GRAD : 'transparent',
-                      border:     isSelected ? 'none' : '2px solid #d1d5db',
+                      border: isSelected ? 'none' : '2px solid #d1d5db',
                     }}
                   >
                     {isSelected
@@ -377,7 +377,7 @@ export function DiagnosticTest({ onComplete, userName, onCancel }: DiagnosticTes
                     className="text-base flex-1"
                     style={{ color: isSelected ? '#4c1d95' : '#374151', fontWeight: isSelected ? 700 : 500 }}
                   >
-                    <span className="text-gray-400 font-bold ml-1">{["أ","ب","ج","د"][index]}.</span>
+                    <span className="text-gray-400 font-bold ml-1">{["أ", "ب", "ج", "د"][index]}.</span>
                     <span dir="auto"> {option}</span>
                   </span>
                 </button>
