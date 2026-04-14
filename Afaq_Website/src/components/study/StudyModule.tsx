@@ -29,7 +29,7 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
   const [questionToShow, setQuestionToShow] = useState<(QuickQuestionItem & { explanation: string }) | null>(
     null
   );
-  
+
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -94,12 +94,49 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
   const slides = module.slides;
   const progress = ((currentSlide + 1) / slides.length) * 100;
   const slide = slides[currentSlide];
+  const rawContent = slide?.content || '';
+
+  const stripTitleFromContent = (title: string, content: string): string => {
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+    if (!trimmedTitle) return trimmedContent;
+
+    const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const normalize = (value: string) => value
+      .replace(/\s+/g, ' ')
+      .replace(/[:\-–—]+/g, '')
+      .trim();
+
+    const normalizedTitle = normalize(trimmedTitle);
+    const firstLine = trimmedContent.split('\n')[0].trim();
+    const normalizedFirstLine = normalize(firstLine);
+
+    if (normalizedFirstLine === normalizedTitle) {
+      const afterLine = trimmedContent.slice(firstLine.length).trimStart();
+      return afterLine.startsWith(':') || afterLine.startsWith('،')
+        ? afterLine.slice(1).trimStart()
+        : afterLine;
+    }
+
+    const titlePrefixRegex = new RegExp(
+      `^${escapeRegExp(trimmedTitle)}(?:\\s*[:،\\-–—]\\s*|\\s+)`,
+      'u'
+    );
+
+    if (titlePrefixRegex.test(trimmedContent)) {
+      return trimmedContent.replace(titlePrefixRegex, '').trimStart();
+    }
+
+    return trimmedContent;
+  };
+
+  const contentWithoutTitle = stripTitleFromContent(slide.title, rawContent);
 
   const handleNext = () => {
     if (currentSlide < slides.length - 1) {
       const nextSlide = currentSlide + 1;
       setCurrentSlide(nextSlide);
-      
+
       // Check if there's a quick question for this slide
       const moduleQuestions = module.quickQuestions;
       const q = moduleQuestions ? moduleQuestions[nextSlide] : undefined;
@@ -164,17 +201,15 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
 
         {/* Slide Content */}
         <Card className="p-8 lg:p-12 mb-8 shadow-xl">
-          <h2 className="text-3xl mb-6">{slide.title}</h2>
-          
           <div className="prose max-w-none mb-8">
-            <p className="text-lg text-gray-700 mb-6">{slide.content}</p>
-            
+            <p className="text-lg text-gray-700 mb-6">{contentWithoutTitle}</p>
+
             {slide.example && (
               <div className="bg-blue-50 border-r-4 border-blue-500 p-4 rounded mb-6">
                 <p className="text-blue-900">{slide.example}</p>
               </div>
             )}
-            
+
             <div className="bg-purple-50 rounded-lg p-6">
               <h3 className="text-xl mb-4">النقاط الرئيسية</h3>
               <ul className="space-y-2">
@@ -191,8 +226,8 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
 
         {/* Navigation */}
         <div className="flex items-center justify-between">
-        
-          
+
+
           <Button
             variant="outline"
             onClick={handlePrevious}
@@ -201,22 +236,21 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
             <ArrowRight className="w-5 h-5 mr-2" />
             السابق
           </Button>
-               <div className="flex gap-2">
+          <div className="flex gap-2">
             {slides.map((_, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentSlide(index)}
-                className={`w-2 h-2 rounded-full transition-all ${
-                  index === currentSlide
+                className={`w-2 h-2 rounded-full transition-all ${index === currentSlide
                     ? 'bg-purple-600 w-8'
                     : index < currentSlide
-                    ? 'bg-purple-400'
-                    : 'bg-gray-300'
-                }`}
+                      ? 'bg-purple-400'
+                      : 'bg-gray-300'
+                  }`}
               />
             ))}
           </div>
-            <Button
+          <Button
             onClick={handleNext}
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
           >
@@ -227,14 +261,14 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
               </>
             ) : (
               <>
-                
-                إكمال والذهاب للاختبار
+
+                إكمال والذهاب للبطاقة التعليمية
                 <ArrowLeft className="w-5 h-5 mr-2" />
               </>
             )}
           </Button>
-          
-     
+
+
         </div>
       </div>
     </div>

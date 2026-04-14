@@ -5,10 +5,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card } from '../ui/card';
-import { signupUser } from '../../lib/firebase';
 
 interface SignupPageProps {
-  onSignup: (name: string, email: string, password: string) => void;
+  onSignup: (name: string, email: string, password: string) => Promise<void>;
   onNavigate?: (page: string) => void;
 }
 
@@ -21,23 +20,50 @@ export function SignupPage({ onSignup, onNavigate }: SignupPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!name.trim()) {
+      setError('الاسم الكامل مطلوب');
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setError('البريد الإلكتروني مطلوب');
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError('صيغة البريد الإلكتروني غير صحيحة');
+      return;
+    }
+
+    if (!password) {
+      setError('كلمة المرور مطلوبة');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('كلمات المرور غير متطابقة');
       return;
     }
+
     if (password.length < 6) {
       setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
+
     setLoading(true);
     try {
-      await signupUser(email, password);
-      onSignup(name, email, password);
+      await onSignup(name, normalizedEmail, password);
     } catch (err: any) {
-      setError(getErrorMessage(err.code));
+      console.error('Signup Error:', err);
+      setError(getErrorMessage(err?.code));
     } finally {
       setLoading(false);
     }

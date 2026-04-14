@@ -1,17 +1,12 @@
-/**
- * AI Learning API
- * Quiz API  -> diagnostic / final / lesson quiz
- * RAG API   -> module content / flashcards
- */
+/// <reference types="vite/client" />
+
+import { auth, saveCurriculum } from '../lib/firebase';
 
 const getQuizBaseUrl = (): string => {
   const base = import.meta.env?.VITE_QUIZ_API_BASE_URL;
-  if (!base) return 'https://common-streets-guess.loca.lt'; // كرابط احتياطي في حال لم يقرأ من الـ .env
-
-  // إزالة أي شرطة مائلة من النهاية لتوحيد الشكل
+  if (!base) return 'https://common-streets-guess.loca.lt';
   return base.trim().replace(/\/+$/, '');
 };
-
 
 const getRagBaseUrl = (): string => {
   const base = import.meta.env?.VITE_RAG_API_BASE_URL;
@@ -21,21 +16,15 @@ const getRagBaseUrl = (): string => {
 
 const getAuthHeaders = (): Record<string, string> => {
   const token = import.meta.env?.VITE_AI_API_TOKEN;
-
-  // غيّرنا اسم الهيدر ليتوافق مع أداة Localtunnel الجديدة
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Bypass-Tunnel-Reminder': 'true' // <--- هذا هو السطر الجديد الخاص بـ Localtunnel
+    'Bypass-Tunnel-Reminder': 'true'
   };
-
   if (typeof token === 'string' && token.trim()) {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 };
-
-
-
 
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T | null> {
   try {
@@ -46,7 +35,6 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T |
         ...(options.headers as Record<string, string>),
       },
     });
-
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -149,10 +137,7 @@ export interface DiagnosticSubmitResponse {
 export async function getDiagnosticQuiz(): Promise<DiagnosticQuizResponse | null> {
   const base = getQuizBaseUrl();
   if (!base) return null;
-
-  return fetchJson<DiagnosticQuizResponse>(`${base}/get_quiz`, {
-    method: 'GET',
-  });
+  return fetchJson<DiagnosticQuizResponse>(`${base}/get_quiz`, { method: 'GET' });
 }
 
 export async function submitDiagnosticQuiz(
@@ -171,6 +156,16 @@ export async function submitDiagnosticQuiz(
 
     if (result.curriculum) {
       localStorage.setItem('afaq_curriculum', JSON.stringify(result.curriculum));
+
+      // ✅ Save curriculum to Firestore
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        try {
+          await saveCurriculum(uid, result.curriculum);
+        } catch (e) {
+          console.error('Failed to save curriculum to Firestore:', e);
+        }
+      }
     }
 
     if (result.student_profile) {
@@ -239,13 +234,9 @@ export async function getLessonQuiz(
 ): Promise<LessonQuizResponse | null> {
   const base = getQuizBaseUrl();
   if (!base) return null;
-
   return fetchJson<LessonQuizResponse>(`${base}/lesson_quiz/get`, {
     method: 'POST',
-    body: JSON.stringify({
-      topic,
-      question_count: questionCount,
-    }),
+    body: JSON.stringify({ topic, question_count: questionCount }),
   });
 }
 
@@ -255,13 +246,9 @@ export async function submitLessonQuiz(
 ): Promise<LessonQuizSubmitResponse | null> {
   const base = getQuizBaseUrl();
   if (!base) return null;
-
   return fetchJson<LessonQuizSubmitResponse>(`${base}/lesson_quiz/submit`, {
     method: 'POST',
-    body: JSON.stringify({
-      topic,
-      answers,
-    }),
+    body: JSON.stringify({ topic, answers }),
   });
 }
 
@@ -293,77 +280,48 @@ export interface GeneratedPlanItem {
   createdAt: string;
 }
 
-export async function generatePlan(payload: GeneratePlanPayload): Promise<GeneratedPlanItem[] | null> {
-  const base2 = 'https://chilly-sites-lay.loca.lt';
-
-  const levelMap: Record<string, string> = {
-    'ممتاز (قوي)': 'ممتاز',
-    'متوسط': 'متوسط',
-    'ضعيف (يحتاج مراجعة)': 'ضعيف',
+export interface GeneratePlanResponse {
+  success: boolean;
+  query: string;
+  result: {
+    subjects?: CurriculumSubject[];
   };
-
-  const savedResult = getSavedDiagnosticResult();
-  let query = '';
-
-  if (savedResult?.performance_by_subject?.length) {
-    query = savedResult.performance_by_subject
-      .map(p => `${p.subject} ${levelMap[p.level] ?? p.level}`)
-      .join('، ');
-  }
-
-  if (!query) query = 'متوسط';
-
-  try {
-    const res = await fetch(`${base2}/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Bypass-Tunnel-Reminder': 'true',
-      },
-      body: JSON.stringify({ query }),
-    });
-
-    if (!res.ok) return null;
-
-    const raw = await res.json();
-
-    // Validate structure from API
-    if (!raw || !raw.result || !Array.isArray(raw.result.subjects)) {
-      return null;
-    }
-
-    // Save the full result to localStorage so PlanDashboard can access subjects
-    localStorage.setItem('afaq_curriculum', JSON.stringify({
-      success: true,
-      query: raw.query,
-      result: raw.result
-    }));
-
-    // RETURN ONLY ONE PLAN: This removes the repetition in the plan list
-    return [{
-      id: "unified-main-plan",
-      title: "الخطة الدراسية الشاملة",
-      level: payload.level,
-      status: 'not-started' as const,
-      completionPercentage: 0,
-      completedModules: [],
-      quizScores: {},
-      createdAt: new Date().toISOString(),
-    }];
-
-  } catch (e) {
-    console.error('❌ generatePlan error:', e);
-    return null;
-  }
 }
 
+function buildPlanQuery(payload: GeneratePlanPayload): string {
+  const savedProfile = localStorage.getItem('afaq_student_profile');
+  if (savedProfile && savedProfile.trim()) {
+    return savedProfile;
+  }
+
+  const levelMap: Record<string, string> = {
+    beginner: 'ضعيف',
+    intermediate: 'متوسط',
+    advanced: 'جيد',
+  };
+
+  const levelText = levelMap[payload.level] || 'متوسط';
+  const goalsText = payload.preferences.goals.length > 0
+    ? `الأهداف: ${payload.preferences.goals.join('، ')}`
+    : '';
+
+  return `رياضيات ${levelText} ${goalsText}`.trim();
+}
+
+export async function generatePlan(payload: GeneratePlanPayload): Promise<GeneratePlanResponse | null> {
+  const base2 = 'http://127.0.0.1:9000';
+  const query = buildPlanQuery(payload);
+  return fetchJson<GeneratePlanResponse>(`${base2}/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ query }),
+  });
+}
 
 // ==============================
-// Flashcards (RAG مباشرة)
+// Flashcards
 // ==============================
 
 export interface FlashcardItem {
-  id: string;
   front: string;
   back: string;
 }
@@ -371,7 +329,6 @@ export interface FlashcardItem {
 export async function generateFlashcards(moduleId: string, topic?: string): Promise<FlashcardItem[] | null> {
   const base = getRagBaseUrl();
   if (!base) return null;
-
   return fetchJson<FlashcardItem[]>(`${base}/ai/flashcards`, {
     method: 'POST',
     body: JSON.stringify({ moduleId, topic }),
@@ -421,46 +378,34 @@ export interface CheckQuizAnswerResponse {
   ai_explanation: string;
 }
 
-// ==============================
-// General quiz per module
-// ==============================
-
 export async function generateQuiz(topicName: string): Promise<GeneratedQuiz | null> {
   const base = getQuizBaseUrl();
 
-  // استخراج اسم الدرس الصافي إذا كان topicName عبارة عن JSON
   let cleanTopic = topicName;
   try {
     const parsed = JSON.parse(topicName);
     if (parsed && parsed.lessonTitle) {
-      cleanTopic = parsed.lessonTitle; // نأخذ "حركة الكواكب والجاذبية" فقط
+      cleanTopic = parsed.lessonTitle;
     } else if (parsed && parsed.topic) {
       cleanTopic = parsed.topic;
     }
   } catch (e) {
-    // إذا لم يكن JSON، نتركه كما هو (مثلاً "الضوء وطاقة الكم")
+    // not JSON, use as-is
   }
 
-  // الآن نرسل cleanTopic النظيف في الرابط
   const url = `${base}/ai/quiz?topic=${encodeURIComponent(cleanTopic)}&question_count=5`;
 
   try {
     const response = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "Bypass-Tunnel-Reminder": "true"
+        'Content-Type': 'application/json',
+        'Bypass-Tunnel-Reminder': 'true'
       }
     });
-
-    if (!response.ok) {
-      console.error(`Error ${response.status}: ${response.statusText}`);
-      return null;
-    }
-    const data = await response.json();
-    return data as GeneratedQuiz;
-  } catch (error) {
-    console.error("Fetch error:", error);
+    if (!response.ok) return null;
+    return (await response.json()) as GeneratedQuiz;
+  } catch {
     return null;
   }
 }
@@ -469,25 +414,19 @@ export async function checkQuizAnswer(
   payload: CheckQuizAnswerPayload
 ): Promise<CheckQuizAnswerResponse | null> {
   const base = getQuizBaseUrl();
-  const url = `${base}/ai/quiz/check/`; // المسار مع شرطة مائلة لمنع 404
-
+  const url = `${base}/ai/quiz/check/`;
   try {
     const response = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "Bypass-Tunnel-Reminder": "true"
+        'Content-Type': 'application/json',
+        'Bypass-Tunnel-Reminder': 'true'
       },
       body: JSON.stringify(payload)
     });
-
-    if (!response.ok) {
-      console.error(`Error ${response.status}: ${response.statusText}`);
-      return null;
-    }
+    if (!response.ok) return null;
     return (await response.json()) as CheckQuizAnswerResponse;
-  } catch (error) {
-    console.error("Fetch error:", error);
+  } catch {
     return null;
   }
 }
@@ -506,7 +445,6 @@ export interface FinalExamQuestion {
 export async function generateFinalExam(planId: string, level?: string): Promise<FinalExamQuestion[] | null> {
   const base = getQuizBaseUrl();
   if (!base) return null;
-
   return fetchJson<FinalExamQuestion[]>(`${base}/ai/final-exam`, {
     method: 'POST',
     body: JSON.stringify({ planId, level }),
@@ -514,7 +452,7 @@ export async function generateFinalExam(planId: string, level?: string): Promise
 }
 
 // ==============================
-// Module content / slides (RAG مباشرة)
+// Module content / slides
 // ==============================
 
 export interface SlideItem {
@@ -578,6 +516,41 @@ function parseModuleId(moduleId: string): {
   }
 }
 
+export function getModuleRoutePath(moduleId: string): string | null {
+  const parsed = parseModuleId(moduleId);
+  if (
+    typeof parsed.subjectIndex === 'number' &&
+    typeof parsed.unitIndex === 'number' &&
+    typeof parsed.lessonIndex === 'number'
+  ) {
+    return `${parsed.subjectIndex}/${parsed.unitIndex}/${parsed.lessonIndex}`;
+  }
+  return null;
+}
+
+export function buildModuleIdFromRoute(
+  curriculum: CurriculumResponse | null,
+  subjectIndex: string,
+  unitIndex: string,
+  lessonIndex: string
+): string {
+  const subjectIdx = Number(subjectIndex);
+  const unitIdx = Number(unitIndex);
+  const lessonIdx = Number(lessonIndex);
+  const subject = curriculum?.result?.subjects?.[subjectIdx];
+  const unit = subject?.units?.[unitIdx];
+  const lesson = unit?.lessons?.[lessonIdx];
+
+  return JSON.stringify({
+    subject: subject?.subject || '',
+    unitTitle: unit?.unit_title || '',
+    lessonTitle: lesson?.lesson_title || '',
+    subjectIndex: subjectIdx,
+    unitIndex: unitIdx,
+    lessonIndex: lessonIdx,
+  });
+}
+
 function curriculumToModuleContent(
   curriculum: CurriculumResponse | null,
   moduleId: string
@@ -598,7 +571,6 @@ function curriculumToModuleContent(
     const subject = subjects[parsed.subjectIndex];
     const unit = subject?.units?.[parsed.unitIndex];
     const lesson = unit?.lessons?.[parsed.lessonIndex];
-
     if (lesson && Array.isArray(lesson.slides) && lesson.slides.length > 0) {
       return {
         title: lesson.lesson_title || subject.subject || 'الوحدة الدراسية',
@@ -624,7 +596,6 @@ function curriculumToModuleContent(
       for (const lesson of unit.lessons || []) {
         const lessonTitle = normalizeText(lesson.lesson_title || '');
         const lessonNumber = lesson.lesson_number ?? -1;
-
         const titleMatches = targetLesson && lessonTitle === targetLesson;
         const numberMatches =
           typeof parsed.lessonNumber === 'number' && lessonNumber === parsed.lessonNumber;
@@ -655,7 +626,6 @@ export async function getModuleContent(moduleId: string, topic?: string): Promis
 
   const base = getRagBaseUrl();
   if (!base) return null;
-
   return fetchJson<ModuleContentResponse>(`${base}/ai/module-content`, {
     method: 'POST',
     body: JSON.stringify({ moduleId, topic }),

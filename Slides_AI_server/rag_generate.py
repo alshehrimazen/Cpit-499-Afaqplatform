@@ -16,7 +16,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = "" # تأكد من وضع مفتاحك هنا
+OPENROUTER_API_KEY = "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" # تأكد من وضع مفتاحك هنا
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
@@ -286,13 +286,19 @@ def load_subject_store(subject: str):
     if not cfg:
         raise ValueError(f"لا يوجد store للمادة: {subject}")
 
-    dataset_path = cfg["dataset"]
-    index_path = cfg["index"]
+    # --- التعديل يبدأ هنا لضمان العثور على الملفات ---
+    # هذا السطر يحدد موقع ملف rag_generate.py الحالي على جهازك
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
+    # دمج مسار المجلد مع اسم ملف الداتا سيت
+    dataset_path = os.path.join(BASE_DIR, cfg["dataset"])
+    index_path = os.path.join(BASE_DIR, cfg["index"])
+    # --- نهاية التعديل ---
 
     if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"ملف الداتا سيت غير موجود: {dataset_path}")
+        raise FileNotFoundError(f"ملف الداتا سيت غير موجود في المسار: {dataset_path}")
     if not os.path.exists(index_path):
-        raise FileNotFoundError(f"ملف الفهرس غير موجود: {index_path}")
+        raise FileNotFoundError(f"ملف الفهرس غير موجود في المسار: {index_path}")
 
     with open(dataset_path, "r", encoding="utf-8") as f:
         docs = json.load(f)
@@ -1119,4 +1125,4 @@ def flashcards_api(payload: FlashcardsRequest):
 # =================================================
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("rag_generate:app", host="0.0.0.0", port=9000, reload=True)
+    uvicorn.run("rag_generate:app", host="127.0.0.1", port=9000, reload=True)

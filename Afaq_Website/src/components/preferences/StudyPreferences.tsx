@@ -61,7 +61,9 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
     );
   };
 
-  const handleSubmit = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
     const preferences: StudyPreferencesData = {
       dailyStudyTime,
       studyDuration,
@@ -70,7 +72,13 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
       goals,
       intensity
     };
-    onComplete(preferences);
+
+    setSubmitting(true);
+    try {
+      await onComplete(preferences);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const canProceed = () => {
@@ -422,11 +430,20 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
             ) : (
               <Button
                 onClick={handleSubmit}
-                disabled={!canProceed()}
+                disabled={!canProceed() || submitting}
                 className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
               >
-                إنشاء خطتي الدراسية
-                <CheckCircle className="w-5 h-5 mr-2" />
+                {submitting ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    جاري إنشاء الخطة...
+                  </div>
+                ) : (
+                  <>
+                    إنشاء خطتي الدراسية
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                  </>
+                )}
               </Button>
             )}
           </div>

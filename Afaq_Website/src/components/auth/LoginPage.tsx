@@ -5,10 +5,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card } from '../ui/card';
-import { loginUser } from '../../lib/firebase';
 
 interface LoginPageProps {
-  onLogin: (email: string, password: string, isGuest?: boolean) => void;
+  onLogin: (email: string, password: string, isGuest?: boolean) => Promise<void>;
   onNavigate?: (page: string) => void;
 }
 
@@ -19,22 +18,54 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
+      setError('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError('صيغة البريد الإلكتروني غير صحيحة');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+
     setError('');
     setLoading(true);
     try {
-      await loginUser(email, password);
-      onLogin(email, password);
+      await onLogin(normalizedEmail, password);
+      // Navigation is handled in AppRouter.tsx wrapper
     } catch (err: any) {
-      setError(getErrorMessage(err.code));
+      console.error('Login Error:', err);
+      const errorCode = err?.code || 'default';
+      setError(getErrorMessage(errorCode));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGuestAccess = () => {
-    onLogin('guest@afaq.com', '', true);
+  const handleGuestAccess = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await onLogin('guest@afaq.com', '', true);
+    } catch (err) {
+      console.error('Guest login error:', err);
+      setError('حدث خطأ أثناء الدخول كزائر');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -45,15 +76,14 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
             <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
               <GraduationCap className="w-7 h-7 text-white" />
             </div>
-            <span className="text-3xl">منصة آفاق</span>
+            <span className="text-3xl font-bold">منصة آفاق</span>
           </div>
-          <h1 className="text-2xl mb-2">مرحباً بعودتك!</h1>
+          <h1 className="text-2xl font-semibold mb-2">مرحباً بعودتك!</h1>
           <p className="text-gray-600">تابع رحلتك التعليمية</p>
         </div>
 
         <Card className="p-8 shadow-xl border-2">
           <form onSubmit={handleSubmit} className="space-y-5">
-
             {error && (
               <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
                 {error}
@@ -72,6 +102,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
                   onChange={(e) => setEmail(e.target.value)}
                   className="pr-10"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -88,6 +119,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   className="pr-10"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -95,9 +127,14 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-11"
             >
-              {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>جاري الدخول...</span>
+                </div>
+              ) : 'تسجيل الدخول'}
             </Button>
           </form>
 
@@ -113,10 +150,11 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="w-full h-11"
             onClick={handleGuestAccess}
+            disabled={loading}
           >
-            <UserCircle className="w-5 h-5 mr-2" />
+            <UserCircle className="w-5 h-5 ml-2" />
             متابعة كزائر
           </Button>
 
@@ -125,7 +163,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
               ليس لديك حساب؟{' '}
               <button
                 onClick={() => navigate('/signup')}
-                className="text-purple-600 hover:text-purple-700"
+                className="text-purple-600 hover:text-purple-700 font-medium"
               >
                 سجل الآن
               </button>
@@ -136,7 +174,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
         <div className="mt-4 text-center">
           <button
             onClick={() => navigate('/landing')}
-            className="text-gray-600 hover:text-gray-800"
+            className="text-gray-600 hover:text-gray-800 transition-colors"
           >
             → العودة للصفحة الرئيسية
           </button>
@@ -152,11 +190,15 @@ function getErrorMessage(code: string) {
     case 'auth/wrong-password':
     case 'auth/invalid-credential':
       return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+    case 'auth/user-disabled':
+      return 'حسابك معطل. يرجى تفعيل الحساب أو التواصل مع الدعم.';
     case 'auth/too-many-requests':
       return 'تم تجاوز عدد المحاولات. حاول لاحقاً';
     case 'auth/invalid-email':
       return 'صيغة البريد الإلكتروني غير صحيحة';
+    case 'auth/network-request-failed':
+      return 'فشل الاتصال بالشبكة. تأكد من اتصال الإنترنت وحاول مرة أخرى';
     default:
-      return 'حدث خطأ. حاول مرة أخرى';
+      return 'حدث خطأ في الاتصال. تأكد من جودة الإنترنت وحاول مرة أخرى';
   }
 }

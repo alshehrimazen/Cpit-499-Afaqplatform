@@ -59,7 +59,6 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
               </div>
               <div className="flex-1 min-w-0">
                 <p className="truncate">{user?.name}</p>
-                <p className="text-sm text-gray-600">{user?.grade}</p>
               </div>
             </div>
           </div>

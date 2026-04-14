@@ -1,20 +1,19 @@
-import React, { useState } from 'react';
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { LandingPage } from './components/LandingPage';
-import { LoginPage } from './components/auth/LoginPage';
-import { SignupPage } from './components/auth/SignupPage';
-import { DiagnosticTest } from './components/diagnostic/DiagnosticTest';
-import { StudyPreferences, StudyPreferencesData } from './components/preferences/StudyPreferences';
-import { PersonalizedHome } from './components/PersonalizedHome';
-import { Friends } from './components/Friends';
-import { PlanDashboard } from './components/dashboard/PlanDashboard';
-import { StudyModule } from './components/study/StudyModule';
-import { LessonFlashcards } from './components/study/LessonFlashcards';
-import { QuizInterface } from './components/quiz/QuizInterface';
-import { FinalExam } from './components/exam/FinalExam';
-import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
-import { Sidebar } from './components/layout/Sidebar';
-import { generatePlan, isAiApiConfigured } from './services/aiApi';
+import React, { useState, useEffect } from 'react';
+import AppRouter from './AppRouter';
+import {
+  auth,
+  loginUser,
+  signupUser,
+  logoutUser,
+  getUserData,
+  ensureUserData,
+  saveProgress,
+  saveStudyPlans,
+  saveCurriculum,
+  onAuthStateChanged
+} from './lib/firebase';
+import { generatePlan, isAiApiConfigured, getSavedCurriculum } from './services/aiApi';
+import type { StudyPreferencesData } from './components/preferences/StudyPreferences';
 
 export interface User {
   id: string;
@@ -23,6 +22,7 @@ export interface User {
   grade?: string;
   isGuest?: boolean;
   avatar?: string;
+  plan?: string;
 }
 
 export interface StudyPlan {
@@ -39,290 +39,230 @@ export interface StudyPlan {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [studyPlans, setStudyPlans] = useState<StudyPlan[]>([]);
-  const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
-  const [currentModule, setCurrentModule] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [curriculum, setCurriculum] = useState<any | null>(null);
   const [diagnosticLevel, setDiagnosticLevel] = useState<string>('');
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const showSidebar = user && !['/landing', '/login', '/signup', '/diagnostic', '/preferences'].includes(location.pathname);
+  // Sync state with Firebase on load
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const data = await getUserData(firebaseUser.uid);
+          if (data) {
+            setUser({
+              id: firebaseUser.uid,
+              name: data.name || 'مستخدم',
+              email: data.email || firebaseUser.email || '',
+              grade: 'الصف الحادي عشر',
+              avatar: data.name?.charAt(0).toUpperCase() || 'U',
+              plan: data.plan || 'free',
+            });
 
-  const handleLogin = (email: string, password: string, isGuest = false) => {
-    const newUser: User = {
-      id: isGuest ? 'guest' : Math.random().toString(36).substr(2, 9),
-      name: isGuest ? 'زائر' : email.split('@')[0],
-      email: email,
-      grade: 'الصف الحادي عشر',
-      isGuest: isGuest,
-      avatar: isGuest ? 'ز' : email.charAt(0).toUpperCase()
-    };
-    setUser(newUser);
+            if (data.curriculum) {
+              setCurriculum(data.curriculum);
+              localStorage.setItem('afaq_curriculum', JSON.stringify(data.curriculum));
+            } else {
+              const saved = getSavedCurriculum();
+              if (saved) setCurriculum(saved);
+            }
 
-    const mockPlans: StudyPlan[] = [
-      {
-        id: 'plan-1',
-        title: 'التحضير لاختبار التحصيلي',
-        level: 'intermediate',
-        status: 'in-progress',
-        completionPercentage: 40,
-        completedModules: ['math-1', 'physics-1'],
-        quizScores: { 'math-1': 85, 'physics-1': 78 },
-        createdAt: new Date('2024-01-15')
+            if (data.studyPlans && Array.isArray(data.studyPlans)) {
+              const restored: StudyPlan[] = data.studyPlans.map((p: any) => ({
+                ...p,
+                createdAt: p.createdAt?.toDate ? p.createdAt.toDate() : new Date(p.createdAt),
+              }));
+              setStudyPlans(restored);
+            }
+          }
+        } catch (e) {
+          console.error('Error loading user data:', e);
+        }
+      } else {
+        setUser(null);
+        setStudyPlans([]);
+        setCurriculum(null);
       }
-    ];
-    setStudyPlans(mockPlans);
-    navigate('/home');
-  };
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
 
-  const handleSignup = (name: string, email: string, password: string) => {
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: name,
-      email: email,
+  const handleLogin = async (email: string, password: string, isGuest = false) => {
+    if (isGuest) {
+      setUser({
+        id: 'guest',
+        name: 'زائر',
+        email: 'guest@afaq.com',
+        grade: 'الصف الحادي عشر',
+        isGuest: true,
+        avatar: 'ز',
+        plan: 'free',
+      });
+      setStudyPlans([]);
+      setCurriculum(null);
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const firebaseUser = await loginUser(normalizedEmail, password);
+    let data = await getUserData(firebaseUser.uid);
+
+    if (!data) {
+      await ensureUserData(firebaseUser.uid, firebaseUser.email || normalizedEmail, firebaseUser.displayName || normalizedEmail.split('@')[0]);
+      data = await getUserData(firebaseUser.uid);
+    }
+
+    setUser({
+      id: firebaseUser.uid,
+      name: data?.name || firebaseUser.displayName || normalizedEmail.split('@')[0] || 'مستخدم',
+      email: data?.email || firebaseUser.email || normalizedEmail,
       grade: 'الصف الحادي عشر',
-      avatar: name.charAt(0).toUpperCase()
-    };
-    setUser(newUser);
-    setStudyPlans([]);
-    navigate('/diagnostic');
+      avatar: (data?.name || firebaseUser.displayName || normalizedEmail.split('@')[0] || 'مستخدم')?.charAt(0).toUpperCase() || 'U',
+      plan: data?.plan || 'free',
+    });
+
+    if (data?.curriculum) {
+      setCurriculum(data.curriculum);
+      localStorage.setItem('afaq_curriculum', JSON.stringify(data.curriculum));
+    } else {
+      const saved = getSavedCurriculum();
+      if (saved) setCurriculum(saved);
+    }
+
+    if (data?.studyPlans) {
+      setStudyPlans(data.studyPlans.map((p: any) => ({
+        ...p,
+        createdAt: p.createdAt?.toDate ? p.createdAt.toDate() : new Date(p.createdAt),
+      })));
+    }
   };
 
-  const handleDiagnosticComplete = (level: string) => {
-    setDiagnosticLevel(level);
-    navigate('/preferences');
+  const handleSignup = async (name: string, email: string, password: string) => {
+    const firebaseUser = await signupUser(email, password, name);
+    setUser({ id: firebaseUser.uid, name, email, grade: 'الصف الحادي عشر', avatar: name.charAt(0).toUpperCase(), plan: 'free' });
+  };
+
+  const handleLogout = async () => {
+    if (!user?.isGuest) await logoutUser();
+    setUser(null);
+    setStudyPlans([]);
+    localStorage.clear();
   };
 
   const handlePreferencesComplete = async (preferences: StudyPreferencesData) => {
-    const levelTitles = {
-      beginner: 'خطة دراسية للمستوى المبتدئ',
-      intermediate: 'خطة دراسية للمستوى المتوسط',
-      advanced: 'خطة دراسية للمستوى المتقدم'
-    };
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    let newPlans: StudyPlan[] = [];
+    let curriculumToSave: any = getSavedCurriculum();
 
     if (isAiApiConfigured()) {
-      const aiPlans = await generatePlan({
-        level: diagnosticLevel,
-        preferences: {
-          dailyStudyTime: preferences.dailyStudyTime,
-          studyDuration: preferences.studyDuration,
-          studyDays: preferences.studyDays,
-          preferredTime: preferences.preferredTime,
-          goals: preferences.goals,
-          intensity: preferences.intensity,
-        },
-      });
-      if (aiPlans && aiPlans.length > 0) {
-        const mapped: StudyPlan[] = aiPlans.map((p) => ({
-          id: p.id,
-          title: p.title,
-          level: p.level,
-          status: p.status,
-          completionPercentage: p.completionPercentage,
-          completedModules: p.completedModules || [],
-          quizScores: p.quizScores || {},
-          createdAt: new Date(p.createdAt),
-        }));
-        setStudyPlans((prev) => [...prev, ...mapped]);
-        setDiagnosticLevel('');
-        navigate('/home');
-        return;
+      try {
+        const aiResponse: any = await generatePlan({
+          level: diagnosticLevel,
+          preferences: {
+            dailyStudyTime: preferences.dailyStudyTime,
+            studyDuration: preferences.studyDuration,
+            studyDays: preferences.studyDays,
+            preferredTime: preferences.preferredTime,
+            goals: preferences.goals,
+            intensity: preferences.intensity,
+          },
+        });
+
+        if (aiResponse?.result?.subjects && aiResponse.result.subjects.length > 0) {
+          curriculumToSave = { result: { subjects: aiResponse.result.subjects } };
+          newPlans = [{
+            id: `plan-${Date.now()}`,
+            title: 'الخطة الدراسية المخصصة',
+            level: diagnosticLevel || 'intermediate',
+            status: 'not-started',
+            completionPercentage: 0,
+            completedModules: [],
+            quizScores: {},
+            createdAt: new Date(),
+          }];
+        }
+      } catch (e) {
+        console.error('Plan generation failed:', e);
       }
     }
 
-    const newPlan: StudyPlan = {
-      id: `plan-${Date.now()}`,
-      title: levelTitles[diagnosticLevel as keyof typeof levelTitles] || 'خطة دراسية',
-      level: diagnosticLevel,
-      status: 'not-started',
-      completionPercentage: 0,
-      completedModules: [],
-      quizScores: {},
-      createdAt: new Date()
-    };
+    if (newPlans.length === 0) {
+      newPlans = [{
+        id: `plan-${Date.now()}`,
+        title: 'الخطة الدراسية المخصصة',
+        level: diagnosticLevel || 'intermediate',
+        status: 'not-started',
+        completionPercentage: 0,
+        completedModules: [],
+        quizScores: {},
+        createdAt: new Date(),
+      }];
+    }
 
-    setStudyPlans([...studyPlans, newPlan]);
+    const updatedPlans = [...studyPlans, ...newPlans];
+    setStudyPlans(updatedPlans);
+
+    if (curriculumToSave) {
+      setCurriculum(curriculumToSave);
+      localStorage.setItem('afaq_curriculum', JSON.stringify(curriculumToSave));
+    }
+
+    try {
+      await saveStudyPlans(uid, updatedPlans.map(p => ({
+        ...p,
+        createdAt: p.createdAt.toISOString(),
+      })));
+
+      if (curriculumToSave) {
+        await saveCurriculum(uid, curriculumToSave);
+      }
+    } catch (e) {
+      console.error('Firebase save failed:', e);
+    }
+
     setDiagnosticLevel('');
-    navigate('/home');
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setStudyPlans([]);
-    setCurrentPlanId(null);
-    setCurrentModule(null);
-    navigate('/landing');
+  const handleQuizComplete = async (moduleId: string, score: number, currentPlanId: string, currentPlans: StudyPlan[]) => {
+    const updatedPlans = currentPlans.map(plan => {
+      if (plan.id === currentPlanId) {
+        const updatedModules = [...plan.completedModules];
+        if (!updatedModules.includes(moduleId)) updatedModules.push(moduleId);
+        const updatedScores = { ...plan.quizScores, [moduleId]: score };
+        const completionPercentage = (updatedModules.length / 5) * 100;
+        return { ...plan, completedModules: updatedModules, quizScores: updatedScores, completionPercentage, status: (completionPercentage === 100 ? 'completed' : 'in-progress') as StudyPlan['status'] };
+      }
+      return plan;
+    });
+    setStudyPlans(updatedPlans);
+
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      const plan = updatedPlans.find(p => p.id === currentPlanId);
+      if (plan) {
+        await saveProgress(uid, currentPlanId, plan.completedModules, plan.quizScores);
+        await saveStudyPlans(uid, updatedPlans.map(p => ({ ...p, createdAt: p.createdAt.toISOString() })));
+      }
+    }
   };
 
-  const currentPlan = studyPlans.find(p => p.id === currentPlanId);
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center">جاري التحميل...</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50" dir="rtl">
-      {showSidebar && (
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          currentPage={location.pathname}
-          user={user}
-          onLogout={handleLogout}
-          studyPlans={studyPlans}
-        />
-      )}
-
-      <div className={showSidebar ? 'lg:pr-64' : ''}>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/landing" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
-          <Route path="/signup" element={<SignupPage onSignup={handleSignup} />} />
-
-          {user && (
-            <>
-              <Route
-                path="/diagnostic"
-                element={
-                  <DiagnosticTest
-                    onComplete={handleDiagnosticComplete}
-                    userName={user.name}
-                    onCancel={() => navigate('/home')}
-                  />
-                }
-              />
-              <Route
-                path="/preferences"
-                element={
-                  <StudyPreferences
-                    userName={user.name}
-                    diagnosticLevel={diagnosticLevel}
-                    onComplete={handlePreferencesComplete}
-                    onCancel={() => navigate('/home')}
-                  />
-                }
-              />
-              <Route
-                path="/home"
-                element={
-                  <PersonalizedHome
-                    user={user}
-                    studyPlans={studyPlans}
-                    onCreateNewPlan={() => navigate('/diagnostic')}
-                    onOpenPlan={(planId) => {
-                      setCurrentPlanId(planId);
-                      navigate(`/plan/${planId}`);
-                    }}
-                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  />
-                }
-              />
-              <Route
-                path="/friends"
-                element={
-                  <Friends
-                    user={user}
-                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  />
-                }
-              />
-              <Route
-                path="/plan/:planId"
-                element={
-                  currentPlan ? (
-                    <PlanDashboard
-                      user={user}
-                      plan={currentPlan}
-                      onStartModule={(moduleId) => {
-                        setCurrentModule(moduleId);
-                        navigate(`/study/${moduleId}`);
-                      }}
-                      onNavigate={(path) => navigate(path)}
-                      onBack={() => navigate('/home')}
-                      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                    />
-                  ) : null
-                }
-              />
-              <Route
-                path="/study/:moduleId"
-                element={
-                  <StudyModule
-                    moduleId={currentModule || ''}
-                    onComplete={() => navigate(`/flashcards/${currentModule}`)}
-                    onBack={() => navigate(-1)}
-                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  />
-                }
-              />
-              <Route
-                path="/flashcards/:moduleId"
-                element={
-                  <LessonFlashcards
-                    moduleId={currentModule || ''}
-                    onComplete={() => navigate(`/quiz/${currentModule}`)}
-                    onBack={() => navigate(-1)}
-                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  />
-                }
-              />
-              <Route
-                path="/quiz/:moduleId"
-                element={
-                  <QuizInterface
-                    moduleId={currentModule || ''}
-                    onComplete={(moduleId, score) => {
-                      if (!currentPlanId) return;
-                      setStudyPlans(plans => plans.map(plan => {
-                        if (plan.id === currentPlanId) {
-                          const updatedModules = [...plan.completedModules];
-                          if (!updatedModules.includes(moduleId)) {
-                            updatedModules.push(moduleId);
-                          }
-                          const updatedScores = { ...plan.quizScores, [moduleId]: score };
-                          const completionPercentage = (updatedModules.length / 5) * 100;
-                          return {
-                            ...plan,
-                            completedModules: updatedModules,
-                            quizScores: updatedScores,
-                            completionPercentage,
-                            status: completionPercentage === 100 ? 'completed' : 'in-progress'
-                          };
-                        }
-                        return plan;
-                      }));
-                      navigate(`/plan/${currentPlanId}`);
-                    }}
-                    onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  />
-                }
-              />
-              <Route
-                path="/final-exam/:planId"
-                element={
-                  currentPlan ? (
-                    <FinalExam
-                      plan={currentPlan}
-                      onComplete={() => navigate(`/analytics/${currentPlanId}`)}
-                      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                    />
-                  ) : null
-                }
-              />
-              <Route
-                path="/analytics/:planId"
-                element={
-                  currentPlan ? (
-                    <AnalyticsDashboard
-                      user={user}
-                      plan={currentPlan}
-                      onNavigate={(path) => navigate(path)}
-                      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                    />
-                  ) : null
-                }
-              />
-            </>
-          )}
-        </Routes>
-      </div>
-    </div>
+    <AppRouter
+      user={user}
+      studyPlans={studyPlans}
+      curriculumProp={curriculum}
+      diagnosticLevel={diagnosticLevel}
+      onLogin={handleLogin}
+      onSignup={handleSignup}
+      onLogout={handleLogout}
+      onDiagnosticComplete={(level) => setDiagnosticLevel(level)}
+      onPreferencesComplete={handlePreferencesComplete}
+      onQuizComplete={handleQuizComplete}
+    />
   );
 }
