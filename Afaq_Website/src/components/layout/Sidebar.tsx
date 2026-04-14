@@ -76,8 +76,8 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
                     onClose();
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                      : 'hover:bg-gray-100'
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
+                    : 'hover:bg-gray-100'
                     }`}
                 >
                   <Icon className="w-5 h-5" />
@@ -93,8 +93,8 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
                   onClose();
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentPage === 'final-exam'
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                    : 'bg-gradient-to-r from-green-50 to-blue-50 hover:from-green-100 hover:to-blue-100'
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
+                  : 'bg-gradient-to-r from-green-50 to-blue-50 hover:from-green-100 hover:to-blue-100'
                   }`}
               >
                 <Award className="w-5 h-5" />

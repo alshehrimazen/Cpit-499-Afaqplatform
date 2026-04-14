@@ -46,16 +46,16 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
   const [intensity, setIntensity] = useState<'relaxed' | 'moderate' | 'intense'>('moderate');
 
   const toggleDay = (dayId: string) => {
-    setStudyDays(prev => 
-      prev.includes(dayId) 
+    setStudyDays(prev =>
+      prev.includes(dayId)
         ? prev.filter(d => d !== dayId)
         : [...prev, dayId]
     );
   };
 
   const toggleGoal = (goalId: string) => {
-    setGoals(prev => 
-      prev.includes(goalId) 
+    setGoals(prev =>
+      prev.includes(goalId)
         ? prev.filter(g => g !== goalId)
         : [...prev, goalId]
     );
@@ -110,9 +110,8 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
             {[1, 2, 3, 4].map(s => (
               <div
                 key={s}
-                className={`h-2 flex-1 rounded-full transition-all ${
-                  s <= step ? 'bg-gradient-to-r from-blue-600 to-purple-600' : 'bg-gray-200'
-                }`}
+                className={`h-2 flex-1 rounded-full transition-all ${s <= step ? 'bg-gradient-to-r from-blue-600 to-purple-600' : 'bg-gray-200'
+                  }`}
               />
             ))}
           </div>
@@ -202,11 +201,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
                     <button
                       key={day.id}
                       onClick={() => toggleDay(day.id)}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        studyDays.includes(day.id)
+                      className={`p-4 rounded-lg border-2 transition-all ${studyDays.includes(day.id)
                           ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600'
                           : 'bg-white border-gray-200 hover:border-purple-300'
-                      }`}
+                        }`}
                     >
                       {day.label}
                     </button>
@@ -222,11 +220,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
                 <div className="grid md:grid-cols-3 gap-3">
                   <button
                     onClick={() => setPreferredTime('morning')}
-                    className={`p-6 rounded-lg border-2 transition-all ${
-                      preferredTime === 'morning'
+                    className={`p-6 rounded-lg border-2 transition-all ${preferredTime === 'morning'
                         ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600'
                         : 'bg-white border-gray-200 hover:border-purple-300'
-                    }`}
+                      }`}
                   >
                     <div className="text-3xl mb-2">🌅</div>
                     <div>صباحاً</div>
@@ -234,11 +231,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
                   </button>
                   <button
                     onClick={() => setPreferredTime('afternoon')}
-                    className={`p-6 rounded-lg border-2 transition-all ${
-                      preferredTime === 'afternoon'
+                    className={`p-6 rounded-lg border-2 transition-all ${preferredTime === 'afternoon'
                         ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600'
                         : 'bg-white border-gray-200 hover:border-purple-300'
-                    }`}
+                      }`}
                   >
                     <div className="text-3xl mb-2">☀️</div>
                     <div>ظهراً</div>
@@ -246,11 +242,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
                   </button>
                   <button
                     onClick={() => setPreferredTime('evening')}
-                    className={`p-6 rounded-lg border-2 transition-all ${
-                      preferredTime === 'evening'
+                    className={`p-6 rounded-lg border-2 transition-all ${preferredTime === 'evening'
                         ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600'
                         : 'bg-white border-gray-200 hover:border-purple-300'
-                    }`}
+                      }`}
                   >
                     <div className="text-3xl mb-2">🌙</div>
                     <div>مساءً</div>
@@ -279,21 +274,18 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
                     <button
                       key={goal.id}
                       onClick={() => toggleGoal(goal.id)}
-                      className={`p-6 rounded-lg border-2 transition-all text-right ${
-                        goals.includes(goal.id)
+                      className={`p-6 rounded-lg border-2 transition-all text-right ${goals.includes(goal.id)
                           ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-purple-600'
                           : 'bg-white border-gray-200 hover:border-purple-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          goals.includes(goal.id)
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${goals.includes(goal.id)
                             ? 'bg-gradient-to-br from-blue-600 to-purple-600'
                             : 'bg-gray-100'
-                        }`}>
-                          <Icon className={`w-6 h-6 ${
-                            goals.includes(goal.id) ? 'text-white' : 'text-gray-600'
-                          }`} />
+                          }`}>
+                          <Icon className={`w-6 h-6 ${goals.includes(goal.id) ? 'text-white' : 'text-gray-600'
+                            }`} />
                         </div>
                         <div className="flex-1">
                           <div className="text-lg mb-1">{goal.label}</div>
@@ -323,11 +315,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
               <div className="space-y-4">
                 <button
                   onClick={() => setIntensity('relaxed')}
-                  className={`w-full p-6 rounded-lg border-2 transition-all text-right ${
-                    intensity === 'relaxed'
+                  className={`w-full p-6 rounded-lg border-2 transition-all text-right ${intensity === 'relaxed'
                       ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-purple-600'
                       : 'bg-white border-gray-200 hover:border-purple-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-4">
                     <div className="text-4xl">🐢</div>
@@ -345,11 +336,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
 
                 <button
                   onClick={() => setIntensity('moderate')}
-                  className={`w-full p-6 rounded-lg border-2 transition-all text-right ${
-                    intensity === 'moderate'
+                  className={`w-full p-6 rounded-lg border-2 transition-all text-right ${intensity === 'moderate'
                       ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-purple-600'
                       : 'bg-white border-gray-200 hover:border-purple-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-4">
                     <div className="text-4xl">🚶</div>
@@ -367,11 +357,10 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
 
                 <button
                   onClick={() => setIntensity('intense')}
-                  className={`w-full p-6 rounded-lg border-2 transition-all text-right ${
-                    intensity === 'intense'
+                  className={`w-full p-6 rounded-lg border-2 transition-all text-right ${intensity === 'intense'
                       ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-purple-600'
                       : 'bg-white border-gray-200 hover:border-purple-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-4">
                     <div className="text-4xl">🚀</div>
@@ -392,7 +381,7 @@ export function StudyPreferences({ userName, diagnosticLevel, onComplete, onCanc
                 <p className="text-purple-900">
                   📊 <strong>مستواك من التقييم:</strong> {
                     diagnosticLevel === 'beginner' ? 'مبتدئ' :
-                    diagnosticLevel === 'intermediate' ? 'متوسط' : 'متقدم'
+                      diagnosticLevel === 'intermediate' ? 'متوسط' : 'متقدم'
                   }
                 </p>
               </div>

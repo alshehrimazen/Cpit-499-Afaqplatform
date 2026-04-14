@@ -242,10 +242,10 @@ export function StudyModule({ moduleId, onComplete, onBack, onToggleSidebar }: S
                 key={index}
                 onClick={() => setCurrentSlide(index)}
                 className={`w-2 h-2 rounded-full transition-all ${index === currentSlide
-                    ? 'bg-purple-600 w-8'
-                    : index < currentSlide
-                      ? 'bg-purple-400'
-                      : 'bg-gray-300'
+                  ? 'bg-purple-600 w-8'
+                  : index < currentSlide
+                    ? 'bg-purple-400'
+                    : 'bg-gray-300'
                   }`}
               />
             ))}
