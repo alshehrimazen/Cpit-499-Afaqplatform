@@ -11,7 +11,7 @@ const getQuizBaseUrl = (): string => {
 const getRagBaseUrl = (): string => {
   const base = import.meta.env?.VITE_RAG_API_BASE_URL;
   if (typeof base === 'string' && base.trim()) return base.replace(/\/$/, '');
-  return '';
+  return 'http://127.0.0.1:9000';
 };
 
 const getAuthHeaders = (): Record<string, string> => {
@@ -326,12 +326,42 @@ export interface FlashcardItem {
   back: string;
 }
 
+function buildModuleTopic(moduleId: string, topic?: string): string {
+  if (topic && topic.trim()) return topic.trim();
+
+  const parsed = parseModuleId(moduleId);
+  const parts: string[] = [];
+  if (parsed.subject) parts.push(parsed.subject);
+  if (parsed.unitTitle && parsed.unitTitle !== parsed.lessonTitle) parts.push(parsed.unitTitle);
+  if (parsed.lessonTitle) parts.push(parsed.lessonTitle);
+
+  return parts.length > 0 ? parts.join(' - ') : moduleId;
+}
+
 export async function generateFlashcards(moduleId: string, topic?: string): Promise<FlashcardItem[] | null> {
   const base = getRagBaseUrl();
   if (!base) return null;
+
+  const savedModule = getModuleContentFromSavedCurriculum(moduleId);
+  const slidesPayload = savedModule?.slides?.map((slide) => ({
+    title: slide.title,
+    explanation: slide.content,
+    example: slide.example ?? '',
+    key_points: Array.isArray(slide.keyPoints) ? slide.keyPoints : [],
+  })) || [];
+
+  const payload: Record<string, unknown> = {
+    moduleId,
+    topic: buildModuleTopic(moduleId, topic),
+  };
+
+  if (slidesPayload.length > 0) {
+    payload.slides = slidesPayload;
+  }
+
   return fetchJson<FlashcardItem[]>(`${base}/ai/flashcards`, {
     method: 'POST',
-    body: JSON.stringify({ moduleId, topic }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -617,6 +647,60 @@ function curriculumToModuleContent(
   }
 
   return null;
+}
+
+export function getModuleContentFromSavedCurriculum(moduleId: string): ModuleContentResponse | null {
+  const savedCurriculum = getSavedCurriculum();
+  return curriculumToModuleContent(savedCurriculum, moduleId);
+}
+
+function buildFlashcardsFromSlides(slides: SlideItem[], moduleId: string): FlashcardItem[] {
+  const parsed = parseModuleId(moduleId);
+  const lessonTitle = parsed.lessonTitle || 'الدرس';
+  const cards: FlashcardItem[] = [];
+
+  const shortenText = (text: string): string => {
+    const clean = text.trim().replace(/\s+/g, ' ');
+    if (!clean) return '';
+
+    const sentenceMatch = clean.match(/^[^\.؟!?\n]+[\.؟!?]?/);
+    const firstSentence = sentenceMatch ? sentenceMatch[0].trim() : clean;
+    if (firstSentence.length <= 100) return firstSentence;
+
+    const commaIndex = firstSentence.indexOf('،');
+    if (commaIndex > 20) {
+      return firstSentence.slice(0, commaIndex).trim();
+    }
+
+    return firstSentence.slice(0, 90).trim().replace(/\s+$/, '') + '...';
+  };
+
+  for (const slide of slides) {
+    if (cards.length >= 6) break;
+
+    const questionText = slide.title
+      ? `ما التعريف المختصر ل"${slide.title}"؟`
+      : `ما النقطة الرئيسية في هذا الشرح؟`;
+
+    const contentText = shortenText(slide.content || '');
+    const keyPointText = Array.isArray(slide.keyPoints) && slide.keyPoints.length > 0
+      ? shortenText(slide.keyPoints[0])
+      : '';
+    const exampleText = shortenText(slide.example || '');
+
+    const answerText = [contentText, keyPointText, exampleText]
+      .filter(Boolean)
+      .shift() || '';
+
+    if (!answerText) continue;
+
+    cards.push({
+      front: questionText,
+      back: answerText,
+    });
+  }
+
+  return cards;
 }
 
 export async function getModuleContent(moduleId: string, topic?: string): Promise<ModuleContentResponse | null> {

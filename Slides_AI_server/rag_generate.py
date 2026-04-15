@@ -9,6 +9,24 @@ import faiss
 import requests
 from sentence_transformers import SentenceTransformer
 
+# Load .env if present
+def load_dotenv(dotenv_path: str = None):
+    path = dotenv_path or os.path.join(os.path.dirname(__file__), '.env')
+    if not os.path.exists(path):
+        return
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -16,7 +34,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = "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" # تأكد من وضع مفتاحك هنا
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
@@ -87,6 +105,7 @@ class GenerateResponse(BaseModel):
 class FlashcardsRequest(BaseModel):
     moduleId: str
     topic: Optional[str] = None
+    slides: Optional[list[dict]] = None
 
 # =================================================
 # HELPERS
@@ -924,15 +943,41 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
     lesson_text = "\n\n".join(lesson_text_parts)[:5000]
 
     prompt = f"""
-أنشئ بطاقات تعليمية لهذا الدرس.
+أنت خبير في تصميم المواد التعليمية.
 
-اسم الدرس:
-{lesson_title}
+مهمتك: إنشاء بطاقات تعليمية (flashcards) فعّالة من محتوى الدرس المُعطى.
 
-محتوى الدرس:
+**اسم الدرس:** {lesson_title}
+
+**محتوى الدرس:**
 {lesson_text}
 
-أخرج JSON فقط.
+**التعليمات:**
+- أنشئ بين 5 و 6 بطاقات تعليمية فقط
+- ركّز على المفاهيم الجوهرية والحقائق القابلة للاختبار
+- اجعل كل سؤال واضحاً ومحدداً، وكل إجابة موجزة (1–3 جمل)
+- تنوّع بين أنواع البطاقات: تعريف، مثال، مقارنة، تطبيق
+- لا تكرر نفس المعلومة في بطاقتين
+
+**مثال على البطاقة المطلوبة:**
+{{
+  "id": 1,
+  "front": "ما الفرق بين الذاكرة RAM و ROM؟",
+  "back": "RAM مؤقتة وتُمحى عند إيقاف الجهاز، أما ROM فدائمة ولا تُمحى.",
+  "type": "مقارنة",
+  "difficulty": "متوسط"
+}}
+
+**أخرج JSON فقط** — مصفوفة بدون أي نص قبلها أو بعدها:
+[
+  {{
+    "id": 1,
+    "front": "السؤال هنا",
+    "back": "الإجابة هنا",
+    "type": "تعريف | مثال | مقارنة | تطبيق",
+    "difficulty": "سهل | متوسط | صعب"
+  }}
+]
 """.strip()
 
     headers = {
@@ -950,7 +995,7 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
         ],
         "temperature": 0.2,
         "top_p": 0.9,
-        "max_tokens": 1200,
+        "max_tokens": 1500,  # bumped: new fields (type, difficulty) need more tokens
     }
 
     r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC)
@@ -982,7 +1027,9 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
         flashcards.append({
             "id": str(item.get("id", idx)),
             "front": front,
-            "back": back
+            "back": back,
+            "type": str(item.get("type", "تعريف")).strip(),
+            "difficulty": str(item.get("difficulty", "متوسط")).strip(),
         })
 
     if not flashcards:
@@ -1086,6 +1133,20 @@ def module_content_api(payload: GenerateRequest):
 @app.post("/ai/flashcards")
 def flashcards_api(payload: FlashcardsRequest):
     try:
+        slides = payload.slides or []
+        if slides:
+            parsed = parse_module_id(payload.moduleId)
+            lesson_title = parsed.get("lessonTitle") or "هذا الدرس"
+            try:
+                flashcards = generate_flashcards_with_model(lesson_title, slides)
+            except Exception as e:
+                print("FLASHCARDS MODEL ERROR:", repr(e))
+                flashcards = build_flashcards_fallback(lesson_title, slides)
+
+            if not flashcards:
+                raise HTTPException(status_code=404, detail="لم يتم العثور على بطاقات لهذا الدرس")
+            return flashcards
+
         query = (payload.topic or "").strip()
 
         if not query:

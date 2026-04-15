@@ -55,15 +55,30 @@ app.post('/ai/plan', async (req, res) => {
 
 // POST /ai/flashcards
 app.post('/ai/flashcards', async (req, res) => {
-  const { moduleId, topic } = req.body || {};
+  const { moduleId, topic, slides } = req.body || {};
   if (!openai) {
     return res.status(503).json({ error: 'OPENAI_API_KEY not configured' });
   }
   if (!moduleId) {
     return res.status(400).json({ error: 'moduleId required' });
   }
-  const systemPrompt = `You are an Arabic education assistant. Return a JSON object with a single key "flashcards" whose value is an array of objects: { id (string), front (question in Arabic), back (answer in Arabic) }. Generate 4-6 flashcards. Every "front" and "back" must be written in Arabic only.`;
-  const userPrompt = `Module: ${moduleId}. Topic: ${topic || moduleId}. Write all front and back text in Arabic. Return only valid JSON.`;
+
+  let userPrompt;
+  if (Array.isArray(slides) && slides.length > 0) {
+    const slidesSummary = slides.map((slide, index) => {
+      const title = slide.title || 'بدون عنوان';
+      const content = slide.content || '';
+      const example = slide.example || '';
+      const keyPoints = Array.isArray(slide.keyPoints) ? slide.keyPoints.join('، ') : '';
+      return `الشريحة ${index + 1}: العنوان: ${title}. المحتوى: ${content}. المثال: ${example}. النقاط الرئيسية: ${keyPoints}.`;
+    }).join('\n');
+
+    userPrompt = `استخدم الشرائح التالية لإنشاء بطاقات تعليمية قصيرة ومباشرة. اجعل كل بطاقة سؤالًا قصيرًا وإجابة موجزة، وركز على أهم نقطة في الشريحة. الشرائح:\n${slidesSummary}`;
+  } else {
+    userPrompt = `Module: ${moduleId}. Topic: ${topic || moduleId}. Write all front and back text in Arabic. Return only valid JSON.`;
+  }
+
+  const systemPrompt = `You are an Arabic education assistant. Return a JSON object with a single key "flashcards" whose value is an array of objects: { id (string), front (question in Arabic), back (answer in Arabic) }. Generate 4-6 short flashcards. Every "front" and "back" must be written in Arabic only.`;
   const generated = await generateWithOpenAI(systemPrompt, userPrompt);
   if (generated?.flashcards && Array.isArray(generated.flashcards)) {
     return res.json(generated.flashcards.map((f, i) => ({ id: String(i + 1), front: f.front, back: f.back })));

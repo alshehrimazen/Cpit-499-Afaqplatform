@@ -66,9 +66,9 @@ export default function AppRouter({
 
   const StudyRoute = () => {
     const routeParams = useParams();
-    const moduleId = currentModule || (routeParams.subjectIndex && routeParams.unitIndex && routeParams.lessonIndex
+    const moduleId = (routeParams.subjectIndex && routeParams.unitIndex && routeParams.lessonIndex)
       ? buildModuleIdFromRoute(curriculumProp || getSavedCurriculum(), routeParams.subjectIndex, routeParams.unitIndex, routeParams.lessonIndex)
-      : '');
+      : currentModule || '';
 
     return user ? (
       <StudyModule
@@ -88,9 +88,9 @@ export default function AppRouter({
 
   const FlashcardsRoute = () => {
     const routeParams = useParams();
-    const moduleId = currentModule || (routeParams.subjectIndex && routeParams.unitIndex && routeParams.lessonIndex
+    const moduleId = (routeParams.subjectIndex && routeParams.unitIndex && routeParams.lessonIndex)
       ? buildModuleIdFromRoute(curriculumProp || getSavedCurriculum(), routeParams.subjectIndex, routeParams.unitIndex, routeParams.lessonIndex)
-      : '');
+      : currentModule || '';
 
     return user ? (
       <LessonFlashcards
@@ -112,9 +112,9 @@ export default function AppRouter({
 
   const QuizRoute = () => {
     const routeParams = useParams();
-    const moduleId = currentModule || (routeParams.subjectIndex && routeParams.unitIndex && routeParams.lessonIndex
+    const moduleId = (routeParams.subjectIndex && routeParams.unitIndex && routeParams.lessonIndex)
       ? buildModuleIdFromRoute(curriculumProp || getSavedCurriculum(), routeParams.subjectIndex, routeParams.unitIndex, routeParams.lessonIndex)
-      : '');
+      : currentModule || '';
 
     return user ? (
       <QuizInterface
