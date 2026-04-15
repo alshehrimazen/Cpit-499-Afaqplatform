@@ -34,7 +34,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
@@ -893,35 +893,6 @@ def flashcards_system_prompt() -> str:
         'صيغة الخرج تكون قائمة JSON مثل: [{"id":"1","front":"...","back":"..."}]'
     )
 
-def build_flashcards_fallback(lesson_title: str, slides: list[dict]) -> list[dict]:
-    flashcards = []
-
-    for idx, slide in enumerate(slides[:6], start=1):
-        title = (slide.get("title") or f"مفهوم {idx}").strip()
-        key_points = slide.get("key_points", []) or []
-        explanation = (slide.get("explanation") or "").strip()
-
-        if key_points:
-            answer = str(key_points[0]).strip()
-        else:
-            parts = re.split(r"[.؟!]\s*", explanation)
-            answer = parts[0].strip() if parts and parts[0].strip() else explanation
-
-        answer = re.sub(r"\s+", " ", answer).strip()
-        words = answer.split()[:12]
-        answer = " ".join(words).strip()
-
-        if not answer:
-            answer = "معلومة من الدرس"
-
-        flashcards.append({
-            "id": str(idx),
-            "front": title,
-            "back": answer
-        })
-
-    return flashcards
-
 def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> list[dict]:
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=401, detail="Missing API Key. Please provide OPENROUTER_API_KEY")
@@ -943,41 +914,41 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
     lesson_text = "\n\n".join(lesson_text_parts)[:5000]
 
     prompt = f"""
-أنت خبير في تصميم المواد التعليمية.
+أنت خبير في تحويل النصوص التعليمية إلى أسئلة واضحة ومباشرة. مهمتك هي إنشاء 5 إلى 6 بطاقات تعليمية بصيغة سؤال وجواب.
 
-مهمتك: إنشاء بطاقات تعليمية (flashcards) فعّالة من محتوى الدرس المُعطى.
+**قاعدة هامة جداً:** يجب أن يبدأ حقل (front) دائماً بكلمة استفهام (ما، ماذا، كيف، اذكر، عدد، لماذا) ويجب أن ينتهي بعلامة (؟). يمنع منعاً باتاً وضع جمل سردية أو عناوين مقتطعة. يجب أن تكون الإجابات (back) كاملة وغير مقطوعة.
 
-**اسم الدرس:** {lesson_title}
+**أمثلة خاطئة يمنع استخدامها (ابتعد عنها تماماً):**
+- front: الخصائص العامة للأسماك الشكل 13-2 لأسماك... (خاطئ ❌)
+- front: الجهاز الوعائي المائي والتغذية... (خاطئ ❌)
 
-**محتوى الدرس:**
-{lesson_text}
-
-**التعليمات:**
-- أنشئ بين 5 و 6 بطاقات تعليمية فقط
-- ركّز على المفاهيم الجوهرية والحقائق القابلة للاختبار
-- اجعل كل سؤال واضحاً ومحدداً، وكل إجابة موجزة (1–3 جمل)
-- تنوّع بين أنواع البطاقات: تعريف، مثال، مقارنة، تطبيق
-- لا تكرر نفس المعلومة في بطاقتين
-
-**مثال على البطاقة المطلوبة:**
+**أمثلة صحيحة وممتازة (قم بتقليد هذا النمط):**
+المثال الأول:
 {{
   "id": 1,
-  "front": "ما الفرق بين الذاكرة RAM و ROM؟",
-  "back": "RAM مؤقتة وتُمحى عند إيقاف الجهاز، أما ROM فدائمة ولا تُمحى.",
-  "type": "مقارنة",
+  "front": "ما هي الخصائص العامة التي تشترك فيها معظم الأسماك؟",
+  "back": "معظم الأسماك لها عمود فقري، وفكوك، وزعانف مزدوجة، وقشور، وتتنفس عن طريق الخياشيم.",
+  "type": "تعريف",
   "difficulty": "متوسط"
 }}
 
-**أخرج JSON فقط** — مصفوفة بدون أي نص قبلها أو بعدها:
-[
-  {{
-    "id": 1,
-    "front": "السؤال هنا",
-    "back": "الإجابة هنا",
-    "type": "تعريف | مثال | مقارنة | تطبيق",
-    "difficulty": "سهل | متوسط | صعب"
-  }}
-]
+المثال الثاني:
+{{
+  "id": 2,
+  "front": "اذكر أمثلة على الأسماك اللافكية.",
+  "back": "من أبرز الأمثلة على الأسماك اللافكية أسماك الجلكي والجريث.",
+  "type": "مثال",
+  "difficulty": "سهل"
+}}
+
+---
+**اسم الدرس:** {lesson_title}
+
+**محتوى الدرس الحالي:**
+{lesson_text}
+
+**المطلوب:** قم بإنشاء بين 5 و 6 بطاقات من المحتوى أعلاه باتباع نفس نمط (الأمثلة الصحيحة).
+أخرج JSON فقط (مصفوفة) دون أي نص آخر.
 """.strip()
 
     headers = {
@@ -995,7 +966,7 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
         ],
         "temperature": 0.2,
         "top_p": 0.9,
-        "max_tokens": 1500,  # bumped: new fields (type, difficulty) need more tokens
+        "max_tokens": 1500,
     }
 
     r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC)
@@ -1033,7 +1004,7 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
         })
 
     if not flashcards:
-        return build_flashcards_fallback(lesson_title, slides)
+        return []
 
     return flashcards[:6]
 
@@ -1073,12 +1044,10 @@ def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
                     print("FLASHCARDS MODEL ERROR:", repr(e))
                     if isinstance(e, HTTPException):
                         raise e
-                    return build_flashcards_fallback(
-                        lesson.get("lesson_title", "هذا الدرس"),
-                        slides
-                    )
+                    return []
 
     return []
+
 
 # =================================================
 # API ROUTES
@@ -1137,11 +1106,14 @@ def flashcards_api(payload: FlashcardsRequest):
         if slides:
             parsed = parse_module_id(payload.moduleId)
             lesson_title = parsed.get("lessonTitle") or "هذا الدرس"
+            
             try:
                 flashcards = generate_flashcards_with_model(lesson_title, slides)
             except Exception as e:
                 print("FLASHCARDS MODEL ERROR:", repr(e))
-                flashcards = build_flashcards_fallback(lesson_title, slides)
+                # تم إزالة build_flashcards_fallback من هنا
+                # بدلاً من ذلك نعيد خطأ يوضح أن الخادم الخارجي فشل
+                raise HTTPException(status_code=503, detail="حدث خطأ أثناء توليد البطاقات من الذكاء الاصطناعي، يرجى المحاولة لاحقاً.")
 
             if not flashcards:
                 raise HTTPException(status_code=404, detail="لم يتم العثور على بطاقات لهذا الدرس")
@@ -1180,7 +1152,6 @@ def flashcards_api(payload: FlashcardsRequest):
     except Exception as e:
         print("FLASHCARDS ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
-
 # =================================================
 # RUN LOCALHOST
 # =================================================
