@@ -20,6 +20,7 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
     { id: 'analytics', label: 'التحليلات', icon: BarChart3 },
   ];
 
+  const normalizedCurrentPage = currentPage.replace(/^\/+/, '').split('/')[0] || 'home';
   const hasCompletedPlans = studyPlans.some(p => p.completionPercentage === 100);
 
   return (
@@ -67,7 +68,7 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentPage === item.id;
+              const isActive = normalizedCurrentPage === item.id;
               return (
                 <button
                   key={item.id}
@@ -75,9 +76,9 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
                     navigate(`/${item.id}`);
                     onClose();
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                    : 'hover:bg-gray-100'
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${isActive
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg ring-2 ring-offset-2 ring-offset-white ring-blue-500'
+                    : 'hover:bg-slate-100 hover:text-slate-900 hover:-translate-y-0.5'
                     }`}
                 >
                   <Icon className="w-5 h-5" />
