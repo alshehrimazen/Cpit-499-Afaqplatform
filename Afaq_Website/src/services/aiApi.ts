@@ -35,9 +35,26 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T |
         ...(options.headers as Record<string, string>),
       },
     });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
+
+    const text = await res.text();
+    if (!res.ok) {
+      try {
+        const body = JSON.parse(text);
+        console.error('API error:', res.status, body);
+      } catch {
+        console.error('API error:', res.status, text);
+      }
+      return null;
+    }
+
+    try {
+      return JSON.parse(text) as T;
+    } catch (e) {
+      console.error('Invalid JSON from API:', e, text);
+      return null;
+    }
+  } catch (error) {
+    console.error('Fetch failed:', error);
     return null;
   }
 }
@@ -309,9 +326,10 @@ function buildPlanQuery(payload: GeneratePlanPayload): string {
 }
 
 export async function generatePlan(payload: GeneratePlanPayload): Promise<GeneratePlanResponse | null> {
-  const base2 = 'http://127.0.0.1:9000';
+  const base = getRagBaseUrl();
+  if (!base) return null;
   const query = buildPlanQuery(payload);
-  return fetchJson<GeneratePlanResponse>(`${base2}/generate`, {
+  return fetchJson<GeneratePlanResponse>(`${base}/generate`, {
     method: 'POST',
     body: JSON.stringify({ query }),
   });
