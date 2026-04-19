@@ -9,24 +9,6 @@ import faiss
 import requests
 from sentence_transformers import SentenceTransformer
 
-# Load .env if present
-def load_dotenv(dotenv_path: str = None):
-    path = dotenv_path or os.path.join(os.path.dirname(__file__), '.env')
-    if not os.path.exists(path):
-        return
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, value = line.split('=', 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
-
-load_dotenv()
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -34,7 +16,7 @@ from pydantic import BaseModel
 # =================================================
 # CONFIG
 # =================================================
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
@@ -638,6 +620,8 @@ def openrouter_one_call(prompt: str) -> str:
     dt = time.time() - t0
     print(f"⏱️ ONE API CALL finished in {dt:.1f}s | model={MODEL_NAME}")
 
+    if r.status_code == 401:
+        raise RuntimeError("OpenRouter 401: invalid or expired API key.")
     if r.status_code == 429:
         raise RuntimeError("OpenRouter 429: Rate limit.")
     if r.status_code == 402:
@@ -971,6 +955,8 @@ def generate_flashcards_with_model(lesson_title: str, slides: list[dict]) -> lis
 
     r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC)
 
+    if r.status_code == 401:
+        raise RuntimeError("Flashcards model error 401: invalid or expired API key.")
     if r.status_code != 200:
         raise RuntimeError(f"Flashcards model error {r.status_code}: {r.text[:300]}")
 
