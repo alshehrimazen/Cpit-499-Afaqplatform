@@ -5,12 +5,14 @@ import type { User, StudyPlan } from '../App';
 interface PersonalizedHomeProps {
   user: User;
   studyPlans: StudyPlan[];
+  curriculum: any;
   onCreateNewPlan: () => void;
   onOpenPlan: (planId: string) => void;
+  onDeletePlan: (planId: string) => void;
   onToggleSidebar: () => void;
 }
 
-export function PersonalizedHome({ user, studyPlans, onCreateNewPlan, onOpenPlan, onToggleSidebar }: PersonalizedHomeProps) {
+export function PersonalizedHome({ user, studyPlans, curriculum, onCreateNewPlan, onOpenPlan, onDeletePlan, onToggleSidebar }: PersonalizedHomeProps) {
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -29,8 +31,10 @@ export function PersonalizedHome({ user, studyPlans, onCreateNewPlan, onOpenPlan
         <HomeTab
           user={user}
           studyPlans={studyPlans}
+          curriculum={curriculum}
           onCreateNewPlan={onCreateNewPlan}
           onOpenPlan={onOpenPlan}
+          onDeletePlan={onDeletePlan}
         />
       </div>
     </div>

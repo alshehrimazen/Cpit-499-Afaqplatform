@@ -10,12 +10,24 @@ import {
   TrendingUp,
   Award,
   Play,
-  RotateCcw
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { getSavedCurriculum } from '../../services/aiApi';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  AlertDialogAction,
+} from '../ui/alert-dialog';
 import type { User, StudyPlan } from '../../App';
 
 interface PlanDashboardProps {
@@ -26,6 +38,7 @@ interface PlanDashboardProps {
   onNavigate: (page: string) => void;
   onBack: () => void;
   onToggleSidebar: () => void;
+  onDeletePlan: (planId: string) => void;
 }
 
 interface Lesson {
@@ -67,7 +80,6 @@ function estimateLessonDuration(slidesCount: number): string {
 }
 
 function buildSubjectsFromCurriculum(plan: StudyPlan, curriculum: any): Subject[] {
-  // يقرأ المنهج بالطريقة الصحيحة بناءً على ملف الـ JSON
   const rawSubjects = curriculum?.result?.subjects || curriculum?.subjects;
 
   if (!rawSubjects || !Array.isArray(rawSubjects)) {
@@ -124,7 +136,8 @@ export function PlanDashboard({
   onStartModule,
   onNavigate,
   onBack,
-  onToggleSidebar
+  onToggleSidebar,
+  onDeletePlan,
 }: PlanDashboardProps) {
   const curriculum = curriculumData || getSavedCurriculum();
   const subjects = useMemo(() => buildSubjectsFromCurriculum(plan, curriculum), [plan, curriculum]);
@@ -173,7 +186,33 @@ export function PlanDashboard({
         <div className="px-4 py-4 flex items-center gap-3">
           <button onClick={onToggleSidebar} className="lg:hidden"><Menu className="w-6 h-6" /></button>
           <button onClick={onBack}><ArrowLeft className="w-6 h-6 rotate-180" /></button>
-          <h1 className="text-xl lg:text-2xl">{plan.title}</h1>
+          <h1 className="text-xl lg:text-2xl flex-1">{plan.title}</h1>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="w-4 h-4" />
+                حذف الخطة
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent dir="rtl" className="flex flex-col items-center">
+              <AlertDialogHeader className="w-full text-center">
+                <AlertDialogTitle className="text-center">تأكيد الحذف</AlertDialogTitle>
+                <AlertDialogDescription className="text-center">
+                  هل أنت متأكد أنك تريد حذف هذه الخطة؟ لا يمكن التراجع عن هذا الإجراء.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex justify-center gap-3 w-full">
+                <AlertDialogAction
+                  className="bg-destructive text-white"
+                  onClick={() => onDeletePlan(plan.id)}
+                >
+                  حذف
+                </AlertDialogAction>
+                <AlertDialogCancel>إلغاء</AlertDialogCancel>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </header>
 

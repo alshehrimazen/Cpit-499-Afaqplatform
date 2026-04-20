@@ -27,6 +27,7 @@ interface AppRouterProps {
   onLogout: () => Promise<void>;
   onDiagnosticComplete: (level: string) => void;
   onPreferencesComplete: (preferences: StudyPreferencesData) => Promise<void>;
+  onDeletePlan: (planId: string) => Promise<void>;
   onQuizComplete: (moduleId: string, score: number, currentPlanId: string, currentPlans: StudyPlan[]) => Promise<void>;
 }
 
@@ -40,6 +41,7 @@ export default function AppRouter({
   onLogout,
   onDiagnosticComplete,
   onPreferencesComplete,
+  onDeletePlan,
   onQuizComplete,
 }: AppRouterProps) {
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
@@ -174,11 +176,21 @@ export default function AppRouter({
               <PersonalizedHome
                 user={user}
                 studyPlans={studyPlans}
+                curriculum={curriculumProp}
                 onCreateNewPlan={() => navigate('/diagnostic')}
                 onOpenPlan={(planId) => {
                   setCurrentPlanId(planId);
                   localStorage.setItem('afaq_current_plan_id', planId);
                   navigate('/plan');
+                }}
+                onDeletePlan={async (planId) => {
+                  await onDeletePlan(planId);
+                  const currentPlanId = localStorage.getItem('afaq_current_plan_id');
+                  if (currentPlanId === planId) {
+                    localStorage.removeItem('afaq_current_plan_id');
+                    setCurrentPlanId(null);
+                    navigate('/home');
+                  }
                 }}
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
               />
@@ -202,6 +214,14 @@ export default function AppRouter({
                 onNavigate={(path) => navigate(path)}
                 onBack={() => navigate('/home')}
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                onDeletePlan={async (planId) => {
+                  await onDeletePlan(planId);
+                  if (planId === activePlanId) {
+                    localStorage.removeItem('afaq_current_plan_id');
+                    setCurrentPlanId(null);
+                    navigate('/home');
+                  }
+                }}
               />
             ) : user ? <Navigate to="/home" replace /> : <Navigate to="/login" replace />}
           />

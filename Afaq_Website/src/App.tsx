@@ -15,6 +15,27 @@ import {
 import { generatePlan, isAiApiConfigured, getSavedCurriculum } from './services/aiApi';
 import type { StudyPreferencesData } from './components/preferences/StudyPreferences';
 
+function getTotalUnitsFromCurriculum(curriculum: any): number {
+  if (!curriculum) return 5; // fallback
+  const subjects = curriculum?.result?.subjects || curriculum?.subjects || [];
+  return subjects.reduce((total: number, subject: any) => {
+    const units = subject.units || [];
+    return total + units.length;
+  }, 0) || 5; // fallback to 5 if calculation fails
+}
+
+function getTotalLessonsFromCurriculum(curriculum: any): number {
+  if (!curriculum) return 24; // fallback
+  const subjects = curriculum?.result?.subjects || curriculum?.subjects || [];
+  return subjects.reduce((total: number, subject: any) => {
+    const units = subject.units || [];
+    return total + units.reduce((unitTotal: number, unit: any) => {
+      const lessons = unit.lessons || [];
+      return unitTotal + lessons.length;
+    }, 0);
+  }, 0) || 24; // fallback to 24 if calculation fails
+}
+
 export interface User {
   id: string;
   name: string;
@@ -232,7 +253,8 @@ export default function App() {
         const updatedModules = [...plan.completedModules];
         if (!updatedModules.includes(moduleId)) updatedModules.push(moduleId);
         const updatedScores = { ...plan.quizScores, [moduleId]: score };
-        const completionPercentage = (updatedModules.length / 5) * 100;
+        const totalUnits = getTotalUnitsFromCurriculum(curriculum);
+        const completionPercentage = (updatedModules.length / totalUnits) * 100;
         return { ...plan, completedModules: updatedModules, quizScores: updatedScores, completionPercentage, status: (completionPercentage === 100 ? 'completed' : 'in-progress') as StudyPlan['status'] };
       }
       return plan;
@@ -249,6 +271,25 @@ export default function App() {
     }
   };
 
+  const handleDeletePlan = async (planId: string) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const updatedPlans = studyPlans.filter((plan) => plan.id !== planId);
+    setStudyPlans(updatedPlans);
+
+    const currentPlanId = localStorage.getItem('afaq_current_plan_id');
+    if (currentPlanId === planId) {
+      localStorage.removeItem('afaq_current_plan_id');
+    }
+
+    try {
+      await saveStudyPlans(uid, updatedPlans.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })));
+    } catch (e) {
+      console.error('Firebase delete failed:', e);
+    }
+  };
+
   if (authLoading) return <div className="min-h-screen flex items-center justify-center">جاري التحميل...</div>;
 
   return (
@@ -262,6 +303,7 @@ export default function App() {
       onLogout={handleLogout}
       onDiagnosticComplete={(level) => setDiagnosticLevel(level)}
       onPreferencesComplete={handlePreferencesComplete}
+      onDeletePlan={handleDeletePlan}
       onQuizComplete={handleQuizComplete}
     />
   );
