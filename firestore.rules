@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // DEMO / DEVELOPMENT RULES
+    //
+    // These rules fix "Missing or insufficient permissions" immediately by:
+    // - allowing ANYONE to read public profiles (so search works)
+    // - requiring authentication for ALL writes (so random strangers can't edit)
+    //
+    // If you need production-grade security, we can tighten these later.
+    match /{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+  }
+}

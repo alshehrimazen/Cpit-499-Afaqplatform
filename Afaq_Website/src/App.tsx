@@ -12,7 +12,16 @@ import {
   deleteStudyPlan,
   clearAllPlanData,
   saveCurriculum,
-  onAuthStateChanged
+  onAuthStateChanged,
+  sendFriendRequest,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  removeFriend,
+  getUserByEmail,
+  getUserPublicProfile,
+  getFriendsList,
+  getFriendRequests,
+  updatePublicProfile
 } from './lib/firebase';
 import { generatePlan, isAiApiConfigured, getSavedCurriculum } from './services/aiApi';
 import type { StudyPreferencesData } from './components/preferences/StudyPreferences';
@@ -46,6 +55,8 @@ export interface User {
   isGuest?: boolean;
   avatar?: string;
   plan?: string;
+  friends?: string[];
+  friendRequests?: Array<{ from: string; createdAt?: any }>;
 }
 
 export interface StudyPlan {
@@ -74,13 +85,21 @@ export default function App() {
         try {
           const data = await getUserData(firebaseUser.uid);
           if (data) {
-            setUser({
+            const userObj = {
               id: firebaseUser.uid,
               name: data.name || 'مستخدم',
               email: data.email || firebaseUser.email || '',
               grade: 'الصف الحادي عشر',
               avatar: data.name?.charAt(0).toUpperCase() || 'U',
               plan: data.plan || 'free',
+            };
+            setUser(userObj);
+
+            // Sync public profile for friend search
+            await updatePublicProfile(firebaseUser.uid, {
+              name: userObj.name,
+              email: userObj.email,
+              avatar: userObj.avatar
             });
 
             if (data.curriculum) {

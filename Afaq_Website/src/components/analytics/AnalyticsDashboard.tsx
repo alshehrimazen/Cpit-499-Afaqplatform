@@ -84,9 +84,6 @@ export function AnalyticsDashboard({ user, plan, onNavigate, onToggleSidebar, hi
               <Menu className="w-6 h-6" />
             </button>
             <h1 className="text-2xl">لوحة التحليلات</h1>
-            <Button variant="outline" onClick={() => onNavigate('/home')}>
-              العودة إلى الرئيسية
-            </Button>
           </div>
         </header>
       )}

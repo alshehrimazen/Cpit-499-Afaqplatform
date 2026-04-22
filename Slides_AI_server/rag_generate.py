@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "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")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_NAME = "google/gemini-3.1-flash-lite-preview"
 
