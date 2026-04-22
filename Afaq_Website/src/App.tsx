@@ -9,6 +9,8 @@ import {
   ensureUserData,
   saveProgress,
   saveStudyPlans,
+  deleteStudyPlan,
+  clearAllPlanData,
   saveCurriculum,
   onAuthStateChanged
 } from './lib/firebase';
@@ -55,6 +57,7 @@ export interface StudyPlan {
   completedModules: string[];
   quizScores: { [key: string]: number };
   createdAt: Date;
+  email?: string;
 }
 
 export default function App() {
@@ -174,6 +177,7 @@ export default function App() {
   const handlePreferencesComplete = async (preferences: StudyPreferencesData) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
+    const email = auth.currentUser?.email || user?.email || '';
 
     let newPlans: StudyPlan[] = [];
     let curriculumToSave: any = getSavedCurriculum();
@@ -234,11 +238,12 @@ export default function App() {
     try {
       await saveStudyPlans(uid, updatedPlans.map(p => ({
         ...p,
+        email,
         createdAt: p.createdAt.toISOString(),
-      })));
+      })), email);
 
       if (curriculumToSave) {
-        await saveCurriculum(uid, curriculumToSave);
+        await saveCurriculum(uid, curriculumToSave, email);
       }
     } catch (e) {
       console.error('Firebase save failed:', e);
@@ -263,10 +268,11 @@ export default function App() {
 
     const uid = auth.currentUser?.uid;
     if (uid) {
+      const email = auth.currentUser?.email || user?.email || '';
       const plan = updatedPlans.find(p => p.id === currentPlanId);
       if (plan) {
-        await saveProgress(uid, currentPlanId, plan.completedModules, plan.quizScores);
-        await saveStudyPlans(uid, updatedPlans.map(p => ({ ...p, createdAt: p.createdAt.toISOString() })));
+        await saveProgress(uid, currentPlanId, plan.completedModules, plan.quizScores, email);
+        await saveStudyPlans(uid, updatedPlans.map(p => ({ ...p, email, createdAt: p.createdAt.toISOString() })), email);
       }
     }
   };
@@ -284,7 +290,19 @@ export default function App() {
     }
 
     try {
-      await saveStudyPlans(uid, updatedPlans.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })));
+      if (updatedPlans.length === 0) {
+        setCurriculum(null);
+        localStorage.removeItem('afaq_curriculum');
+        await clearAllPlanData(uid);
+      } else {
+        const email = auth.currentUser?.email || user?.email || '';
+        await deleteStudyPlan(
+          uid,
+          planId,
+          updatedPlans.map((p) => ({ ...p, email, createdAt: p.createdAt.toISOString() })),
+          email
+        );
+      }
     } catch (e) {
       console.error('Firebase delete failed:', e);
     }

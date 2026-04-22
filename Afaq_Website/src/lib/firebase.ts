@@ -12,7 +12,9 @@ import {
   doc,
   setDoc,
   getDoc,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc,
+  deleteField
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -80,23 +82,55 @@ export async function ensureUserData(uid: string, email: string, name?: string) 
   }
 }
 
-export async function saveStudyPlans(uid: string, plans: object[]) {
-  await setDoc(doc(db, 'users', uid), { studyPlans: plans }, { merge: true });
+export async function saveStudyPlans(uid: string, plans: object[], email?: string) {
+  await setDoc(
+    doc(db, 'users', uid),
+    {
+      studyPlans: plans,
+      ...(email ? { email } : {}),
+    },
+    { merge: true }
+  );
 }
 
-export async function saveCurriculum(uid: string, curriculum: object) {
-  await setDoc(doc(db, 'users', uid), { curriculum }, { merge: true });
+export async function deleteStudyPlan(uid: string, planId: string, plans: object[], email?: string) {
+  await updateDoc(doc(db, 'users', uid), {
+    studyPlans: plans,
+    [`plans.${planId}`]: deleteField(),
+    ...(email ? { email } : {}),
+  });
+}
+
+export async function clearAllPlanData(uid: string) {
+  await updateDoc(doc(db, 'users', uid), {
+    studyPlans: deleteField(),
+    plans: deleteField(),
+    curriculum: deleteField(),
+  });
+}
+
+export async function saveCurriculum(uid: string, curriculum: object, email?: string) {
+  await setDoc(
+    doc(db, 'users', uid),
+    {
+      curriculum,
+      ...(email ? { email } : {}),
+    },
+    { merge: true }
+  );
 }
 
 export async function saveProgress(
   uid: string,
   planId: string,
   completedModules: string[],
-  quizScores: Record<string, number>
+  quizScores: Record<string, number>,
+  email?: string
 ) {
   await setDoc(doc(db, 'users', uid), {
     [`plans.${planId}.completedModules`]: completedModules,
     [`plans.${planId}.quizScores`]: quizScores,
+    ...(email ? { email } : {}),
   }, { merge: true });
 }
 

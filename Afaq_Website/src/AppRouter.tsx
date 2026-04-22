@@ -14,6 +14,7 @@ import { QuizInterface } from './components/quiz/QuizInterface';
 import { getSavedCurriculum, getModuleRoutePath, buildModuleIdFromRoute } from './services/aiApi';
 import { FinalExam } from './components/exam/FinalExam';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
+import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { Sidebar } from './components/layout/Sidebar';
 import type { User, StudyPlan } from './App';
 
@@ -236,6 +237,17 @@ export default function AppRouter({
 
           {/* مسارات إضافية مماثلة... */}
           <Route path="/friends" element={user ? <Friends user={user} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} /> : <Navigate to="/login" replace />} />
+          <Route
+            path="/analytics"
+            element={user ? (
+              <AnalyticsPage
+                user={user}
+                studyPlans={studyPlans}
+                onNavigate={(path) => navigate(path)}
+                onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+              />
+            ) : <Navigate to="/login" replace />}
+          />
         </Routes>
       </div>
     </div>

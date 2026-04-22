@@ -178,7 +178,8 @@ export async function submitDiagnosticQuiz(
       const uid = auth.currentUser?.uid;
       if (uid) {
         try {
-          await saveCurriculum(uid, result.curriculum);
+          const email = auth.currentUser?.email || '';
+          await saveCurriculum(uid, result.curriculum, email);
         } catch (e) {
           console.error('Failed to save curriculum to Firestore:', e);
         }
