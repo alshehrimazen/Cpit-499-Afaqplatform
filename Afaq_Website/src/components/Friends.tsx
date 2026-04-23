@@ -283,7 +283,7 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                       </div>
                       <Button
                         onClick={() => handleSendRequest(searchResult.id, searchResult.email)}
-                        className="bg-green-600 hover:bg-green-700"
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                       >
                         إضافة
                       </Button>
@@ -316,15 +316,16 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                     </div>
                     <div className="flex gap-2">
                       <Button
-                        size="sm"
                         onClick={() => handleAcceptRequest(request.from)}
-                        className="bg-green-600 hover:bg-green-700"
+                        style={{ backgroundColor: '#16a34a', color: 'white' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#15803d'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#16a34a'}
+                        className="font-semibold"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
                         قبول
                       </Button>
                       <Button
-                        size="sm"
                         variant="outline"
                         onClick={() => handleRejectRequest(request.from)}
                       >

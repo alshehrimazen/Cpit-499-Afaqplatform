@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Progress } from '../ui/progress';
 import type { StudyPlan } from '../../App';
-import { generateFinalExam, isAiApiConfigured, type FinalExamQuestion } from '../../services/aiApi';
+import { generateFinalExam, type FinalExamQuestion } from '../../services/aiApi';
 
 interface FinalExamProps {
   plan: StudyPlan;
@@ -43,19 +43,13 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
       setAnswers([]);
       setFinished(false);
 
-      if (!isAiApiConfigured()) {
-        setError('خدمة الذكاء الاصطناعي غير مفعّلة حالياً. الرجاء ضبط إعدادات السيرفر ثم المحاولة مرة أخرى.');
-        setLoading(false);
-        return;
-      }
-
       const q = await generateFinalExam(plan.id, plan.level);
       if (!active) return;
 
       if (q && Array.isArray(q) && q.length > 0) {
         setQuestions(q);
       } else {
-        setError('تعذر إنشاء أسئلة الاختبار النهائي حالياً. حاول مرة أخرى لاحقاً.');
+        setError('تعذر تحميل أسئلة الاختبار النهائي من السيرفر. تأكد من تشغيل السيرفر وأن endpoint /ai/final-exam يعمل.');
       }
       setLoading(false);
     };

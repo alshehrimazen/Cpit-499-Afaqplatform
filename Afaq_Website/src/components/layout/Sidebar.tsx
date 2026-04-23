@@ -90,7 +90,7 @@ export function Sidebar({ isOpen, onClose, currentPage, user, onLogout, studyPla
             {hasCompletedPlans && (
               <button
                 onClick={() => {
-                  navigate('/final-exam/:planId');
+                  navigate('/final-exam');
                   onClose();
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentPage === 'final-exam'

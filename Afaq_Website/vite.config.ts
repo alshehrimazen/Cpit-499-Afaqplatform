@@ -59,5 +59,9 @@
     server: {
       port: 3000,
       open: true,
+      fs: {
+        // Allow importing dataset from sibling folder: ../test_AI_server/Afaq_Train.jsonl
+        allow: ['..'],
+      },
     },
   });

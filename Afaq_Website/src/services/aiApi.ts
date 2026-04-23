@@ -4,7 +4,8 @@ import { auth, saveCurriculum } from '../lib/firebase';
 
 const getQuizBaseUrl = (): string => {
   const base = import.meta.env?.VITE_QUIZ_API_BASE_URL;
-  if (!base) return 'https://common-streets-guess.loca.lt';
+  // Default to local server to avoid stale tunnel URLs causing 404.
+  if (!base) return 'http://127.0.0.1:8080';
   return base.trim().replace(/\/+$/, '');
 };
 
@@ -484,6 +485,10 @@ export async function checkQuizAnswer(
 // Final exam
 // ==============================
 
+// ==============================
+// Final exam - Modified Version
+// ==============================
+
 export interface FinalExamQuestion {
   subject: string;
   question: string;
@@ -491,13 +496,66 @@ export interface FinalExamQuestion {
   correctAnswer: number;
 }
 
+// Cache per planId to prevent spamming requests on re-renders/retries.
+const finalExamCache = new Map<string, FinalExamQuestion[]>();
+
+/**
+ * تحويل الحرف المرجع من السيرفر (أ، ب، ج، د) إلى مؤشر رقمي (0-3)
+ */
+function letterToIndexFinal(letter: string | undefined | null): number {
+  const l = (letter || '').trim();
+  const mapping: Record<string, number> = {
+    'أ': 0, 'A': 0, 'a': 0,
+    'ب': 1, 'B': 1, 'b': 1,
+    'ج': 2, 'C': 2, 'c': 2,
+    'د': 3, 'D': 3, 'd': 3
+  };
+  return mapping[l] ?? 0;
+}
+
+/**
+ * جلب الاختبار النهائي حصرياً عبر مسار /get_final المستقر
+ */
 export async function generateFinalExam(planId: string, level?: string): Promise<FinalExamQuestion[] | null> {
+  const cacheKey = `${planId}::${level || ''}`;
+  const cached = finalExamCache.get(cacheKey);
+  
+  if (cached && cached.length > 0) {
+    return cached;
+  }
+
   const base = getQuizBaseUrl();
-  if (!base) return null;
-  return fetchJson<FinalExamQuestion[]>(`${base}/ai/final-exam`, {
-    method: 'POST',
-    body: JSON.stringify({ planId, level }),
-  });
+  // الاعتماد على المسار الجديد الذي يسحب من Afaq_Train.jsonl مباشرة
+  const url = `${base}/get_final`;
+
+  console.log('🚀 Calling Final Exam API (GET Only):', url);
+
+  try {
+    const res = await fetchJson<{ status: string; data: any[] }>(url, { 
+      method: 'GET' 
+    });
+
+    if (res?.status === 'success' && Array.isArray(res.data)) {
+      // تحويل البيانات من تنسيق السيرفر العام إلى تنسيق واجهة الاختبار النهائي
+      const formattedQuestions: FinalExamQuestion[] = res.data.map((item) => ({
+        subject: (item.subject || 'عام').toString(),
+        question: item.display_question || item.question_text || '',
+        options: Array.isArray(item.options) ? item.options : ['أ', 'ب', 'ج', 'د'],
+        correctAnswer: letterToIndexFinal(item.correct_letter),
+      }));
+
+      if (formattedQuestions.length > 0) {
+        console.log('✅ Final exam questions loaded from /get_final:', formattedQuestions.length);
+        finalExamCache.set(cacheKey, formattedQuestions);
+        return formattedQuestions;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to fetch final exam from /get_final:', error);
+  }
+
+  console.warn('⚠️ No questions returned for final exam via /get_final');
+  return null;
 }
 
 // ==============================

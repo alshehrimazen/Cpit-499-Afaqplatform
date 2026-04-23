@@ -80,6 +80,10 @@ class AIQuizRequest(BaseModel):
 
 
 class SingleQuestionCheckRequest(BaseModel):
+class FinalExamRequest(BaseModel):
+    planId: str
+    level: Optional[str] = None
+
     question_id: int
     subject: str
     topic: str
@@ -295,6 +299,100 @@ def get_balanced_questions(questions_per_subject=2):
         print(f"⚠️ خطأ في قراءة الملف: {e}")
 
     return final_questions
+
+
+def _resolve_dataset_path() -> str:
+    """
+    The website runs against different environments (local Windows repo vs Colab).
+    Try common locations and return the first existing path.
+    """
+    candidates = [
+        dataset_path,
+        os.path.join(os.path.dirname(__file__), dataset_path),
+        os.path.join(os.path.dirname(__file__), "Afaq_Train.jsonl"),
+        "/content/Afaq_Train.jsonl",
+    ]
+    for p in candidates:
+        try:
+            if p and os.path.exists(p):
+                return p
+        except Exception:
+            pass
+    return dataset_path
+
+
+def get_comprehensive_questions(total_questions: int = 20):
+    """
+    Build a final exam from Afaq_Train.jsonl.
+    Output format matches the frontend FinalExamQuestion interface:
+    { subject, question, options, correctAnswer }
+    """
+    path = _resolve_dataset_path()
+    questions_by_subject = defaultdict(list)
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = (line or "").strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except Exception:
+                    continue
+
+                full_input = data.get("input", "")
+                full_output = data.get("output", "")
+
+                correct_letter = extract_correct_letter(full_output)
+                if not correct_letter:
+                    continue
+
+                clean_question = extract_question_text(full_input)
+                stem, options = split_question_and_options(clean_question)
+                if not stem or not options or len(options) < 2:
+                    continue
+
+                subj = extract_subject_from_input(full_input) or "عام"
+                questions_by_subject[subj].append({
+                    "subject": subj,
+                    "question": stem,
+                    "options": options[:4] if len(options) >= 4 else (options + [""] * (4 - len(options))),
+                    "correctAnswer": letter_to_index(correct_letter),
+                })
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail=f"ملف البيانات غير موجود: {path}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"خطأ في تحميل بيانات الاختبار النهائي: {str(e)}")
+
+    if not questions_by_subject:
+        raise HTTPException(status_code=500, detail="لا توجد أسئلة صالحة داخل ملف Afaq_Train.jsonl")
+
+    # Balance across subjects
+    subjects = list(questions_by_subject.keys())
+    random.shuffle(subjects)
+    per_subject = max(1, total_questions // max(1, len(subjects)))
+
+    final_questions = []
+    for subj in subjects:
+        q_list = questions_by_subject[subj]
+        if not q_list:
+            continue
+        take = min(per_subject, len(q_list))
+        final_questions.extend(random.sample(q_list, take))
+
+    # Fill remaining
+    if len(final_questions) < total_questions:
+        all_q = []
+        for q_list in questions_by_subject.values():
+            all_q.extend(q_list)
+        remaining = [q for q in all_q if q not in final_questions]
+        if remaining:
+            need = total_questions - len(final_questions)
+            final_questions.extend(random.sample(remaining, min(need, len(remaining))))
+
+    random.shuffle(final_questions)
+    return final_questions[:total_questions]
 
 # ============================================
 # أسئلة الدرس من Questions.jsonl
@@ -665,6 +763,136 @@ async def submit_lesson_quiz(submission: LessonQuizSubmission):
     result = evaluate_answers_core(submission.answers)
     result["topic"] = topic
     return result
+
+
+# ============================================
+# Final exam endpoint (needed by the website)
+# ============================================
+@app.post("/ai/final-exam")
+@app.post("/ai/final-exam/")
+@app.post("/ai/final_exam")
+async def generate_final_exam(payload: FinalExamRequest):
+    """
+    Website calls POST /ai/final-exam with { planId, level }.
+    We ignore planId/level for now and sample from Afaq_Train.jsonl.
+    """
+    questions = get_comprehensive_questions(total_questions=20)
+    return questions
+
+# ============================================
+# Final Exam Endpoint
+# ============================================
+
+class FinalExamRequest(BaseModel):
+    planId: str
+    level: Optional[str] = None
+
+def get_comprehensive_questions(total_questions: int = 20) -> List[dict]:
+    """Load balanced questions from all subjects and topics for final exam"""
+    questions_by_subject = defaultdict(list)
+    final_questions = []
+
+    try:
+        # Use Afaq_Train.jsonl for comprehensive questions
+        with open(dataset_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    full_input = data.get("input", "")
+                    full_output = data.get("output", "")
+
+                    subject = extract_subject_from_input(full_input)
+                    clean_question = extract_question_text(full_input)
+                    correct_letter = extract_correct_letter(full_output)
+
+                    if not correct_letter:
+                        continue
+
+                    ref_exp = extract_reference_explanation(full_output, correct_letter)
+                    stem, options = split_question_and_options(clean_question)
+
+                    questions_by_subject[subject].append({
+                        "subject": subject,
+                        "question_text": clean_question,
+                        "question": stem,
+                        "options": options,
+                        "correct_letter": correct_letter,
+                        "correctAnswer": letter_to_index(correct_letter),
+                        "reference_explanation": ref_exp,
+                    })
+                except Exception as e:
+                    print(f"⚠️ خطأ في معالجة سطر: {e}")
+                    continue
+
+        # Balance questions across subjects
+        if questions_by_subject:
+            questions_per_subject = max(1, total_questions // len(questions_by_subject))
+            
+            for subject, q_list in questions_by_subject.items():
+                if q_list:
+                    sample_size = min(questions_per_subject, len(q_list))
+                    final_questions.extend(random.sample(q_list, sample_size))
+            
+            # Ensure we have enough questions
+            if len(final_questions) < total_questions:
+                all_questions = []
+                for q_list in questions_by_subject.values():
+                    all_questions.extend(q_list)
+                
+                additional_needed = total_questions - len(final_questions)
+                remaining = [q for q in all_questions if q not in final_questions]
+                if remaining:
+                    final_questions.extend(random.sample(remaining, min(additional_needed, len(remaining))))
+            
+            # Shuffle and limit
+            random.shuffle(final_questions)
+            final_questions = final_questions[:total_questions]
+
+    except FileNotFoundError:
+        print(f"❌ ملف {dataset_path} غير موجود")
+        raise HTTPException(status_code=500, detail=f"ملف البيانات {dataset_path} غير موجود")
+    except Exception as e:
+        print(f"❌ خطأ في تحميل أسئلة الاختبار النهائي: {e}")
+        raise HTTPException(status_code=500, detail=f"خطأ في تحميل الأسئلة: {str(e)}")
+
+    if not final_questions:
+        raise HTTPException(status_code=500, detail="لا توجد أسئلة متاحة في قاعدة البيانات")
+
+    return final_questions
+
+@app.post("/ai/final-exam")
+@app.post("/ai/final-exam/")
+@app.post("/ai/final_exam")
+async def generate_final_exam(payload: FinalExamRequest):
+    """Generate a comprehensive final exam with questions from all subjects"""
+    try:
+        questions = get_comprehensive_questions(total_questions=20)
+        
+        if not questions:
+            raise HTTPException(
+                status_code=500, 
+                detail="تعذر إنشاء أسئلة الاختبار النهائي. حاول مرة أخرى لاحقاً."
+            )
+        
+        # Format response to match FinalExamQuestion interface
+        formatted_questions = []
+        for idx, q in enumerate(questions, start=1):
+            formatted_questions.append({
+                "question_id": idx,
+                "subject": q.get("subject", "عام"),
+                "question": q.get("question", ""),
+                "options": q.get("options", ["أ", "ب", "ج", "د"]),
+                "correctAnswer": q.get("correctAnswer", 0),
+            })
+        
+        return formatted_questions
+        
+    except Exception as e:
+        print(f"❌ خطأ في إنشاء الاختبار النهائي: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="حدث خطأ في إنشاء الاختبار النهائي. الرجاء المحاولة مرة أخرى."
+        )
 
 # ============================================
 # تشغيل السيرفر

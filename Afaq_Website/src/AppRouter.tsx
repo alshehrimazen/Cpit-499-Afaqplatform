@@ -132,6 +132,27 @@ export default function AppRouter({
     ) : <Navigate to="/login" replace />;
   };
 
+  const FinalExamRoute = () => {
+    const routeParams = useParams();
+    const planId = routeParams.planId;
+    const completedPlans = studyPlans.filter(p => p.completionPercentage === 100);
+    const plan =
+      (planId ? studyPlans.find(p => p.id === planId) : null) ||
+      completedPlans[0] ||
+      null;
+
+    if (!user) return <Navigate to="/login" replace />;
+    if (!plan) return <Navigate to="/home" replace />;
+
+    return (
+      <FinalExam
+        plan={plan}
+        onComplete={() => navigate('/analytics')}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+      />
+    );
+  };
+
   const activePlanId = currentPlanId || localStorage.getItem('afaq_current_plan_id');
   const showSidebar = user && !['/landing', '/login', '/signup', '/diagnostic', '/preferences'].includes(location.pathname);
   const currentPlan = studyPlans.find(p => p.id === activePlanId);
@@ -248,6 +269,9 @@ export default function AppRouter({
               />
             ) : <Navigate to="/login" replace />}
           />
+
+          <Route path="/final-exam" element={<FinalExamRoute />} />
+          <Route path="/final-exam/:planId" element={<FinalExamRoute />} />
         </Routes>
       </div>
     </div>
