@@ -4,13 +4,13 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import type { User } from '../App';
-import { 
-  sendFriendRequest, 
-  acceptFriendRequest, 
-  rejectFriendRequest, 
+import {
+  sendFriendRequest,
+  acceptFriendRequest,
+  rejectFriendRequest,
   removeFriend,
   getFriendsList,
   getFriendRequests,
@@ -46,6 +46,12 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
   const [searchEmail, setSearchEmail] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<FriendProfile | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchSuccess, setSearchSuccess] = useState<string | null>(null); // NEW: Track success message
+
+  // Tracking loading indicators for actions
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Load friends and requests on mount
   useEffect(() => {
@@ -90,28 +96,47 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
   };
 
   const handleSearchFriend = async () => {
+    setSearchError(null);
+    setSearchSuccess(null); // Clear success when searching again
+
     if (!searchEmail.trim()) {
-      toast.error('أدخل بريد إلكتروني');
+      setSearchError('الرجاء إدخال البريد الإلكتروني');
       return;
     }
 
     if (user.isGuest || !auth.currentUser) {
-      toast.error('سجّل الدخول لاستخدام ميزة إضافة الأصدقاء');
+      setSearchError('سجّل الدخول لاستخدام ميزة إضافة الأصدقاء');
       return;
     }
 
     try {
       setSearching(true);
       const foundUser = await getUserByEmail(searchEmail);
-      
+
       if (!foundUser) {
-        toast.error('لم يتم العثور على مستخدم');
+        setSearchError('لم يتم العثور على مستخدم بهذا البريد الإلكتروني');
         setSearchResult(null);
         return;
       }
 
       if (foundUser.id === user.id) {
-        toast.error('لا يمكن إضافة نفسك');
+        setSearchError('لا يمكنك إضافة نفسك كصديق');
+        setSearchResult(null);
+        return;
+      }
+
+      // Check if already a friend
+      const alreadyFriend = friends.some(f => f.id === foundUser.id);
+      if (alreadyFriend) {
+        setSearchError('لقد قمت بإضافة هذا الصديق مسبقاً وهو في قائمتك');
+        setSearchResult(null);
+        return;
+      }
+
+      // Check if there's already a pending request from them
+      const alreadyRequested = friendRequests.some(r => r.from === foundUser.id);
+      if (alreadyRequested) {
+        setSearchError('لديك طلب صداقة معلق من هذا المستخدم بالفعل');
         setSearchResult(null);
         return;
       }
@@ -122,9 +147,9 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
       console.error('Error searching friend:', e);
       const code = (e as any)?.code as string | undefined;
       if (code === 'permission-denied') {
-        toast.error('صلاحيات Firestore تمنع البحث. تأكد من نشر Rules في مشروع Firebase الصحيح.');
+        setSearchError('صلاحيات النظام تمنع البحث حالياً.');
       } else {
-      toast.error('حدث خطأ في البحث');
+        setSearchError('حدث خطأ أثناء البحث. حاول مرة أخرى.');
       }
     } finally {
       setSearching(false);
@@ -133,22 +158,47 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
 
   const handleSendRequest = async (friendId: string, friendEmail: string) => {
     try {
+      setSearchError(null);
+      setSearchSuccess(null);
+      setSendingId(friendId);
+
       if (user.isGuest || !auth.currentUser) {
-        toast.error('سجّل الدخول لاستخدام ميزة إضافة الأصدقاء');
+        setSearchError('سجّل الدخول لاستخدام ميزة إضافة الأصدقاء');
         return;
       }
+
+      // Check locally first
+      const alreadyFriend = friends.some(f => f.id === friendId);
+      if (alreadyFriend) {
+        setSearchError('لقد قمت بإضافة هذا الصديق مسبقاً وهو في قائمتك');
+        return;
+      }
+
       await sendFriendRequest(user.id, friendEmail);
-      toast.success('تم إرسال طلب صداقة');
+
+      // ✅ SUCCESS STATE: Display message instead of closing dialog
+      setSearchSuccess('تم إرسال طلب الصداقة بنجاح');
       setSearchEmail('');
       setSearchResult(null);
-      setDialogOpen(false);
+
     } catch (e: any) {
-      toast.error(e.message || 'خطأ في إرسال الطلب');
+      const errorMsg = e.message?.toLowerCase() || '';
+      if (errorMsg.includes('already friends')) {
+        setSearchError('لقد قمت بإضافة هذا الصديق مسبقاً وهو في قائمتك');
+      } else if (errorMsg.includes('pending') || errorMsg.includes('exists')) {
+        setSearchError('لقد قمت بإرسال طلب صداقة مسبقاً وهو قيد الانتظار');
+      } else {
+        setSearchError('حدث خطأ: هذا المستخدم مضاف مسبقاً أو يوجد طلب معلق');
+      }
+    } finally {
+      setSendingId(null);
     }
   };
 
   const handleAcceptRequest = async (fromUid: string) => {
     try {
+      setProcessingId(fromUid);
+
       if (user.isGuest || !auth.currentUser) {
         toast.error('سجّل الدخول لاستخدام ميزة الأصدقاء');
         return;
@@ -159,11 +209,15 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
     } catch (e) {
       console.error('Error accepting request:', e);
       toast.error('خطأ في قبول الطلب');
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleRejectRequest = async (fromUid: string) => {
     try {
+      setProcessingId(fromUid);
+
       if (user.isGuest || !auth.currentUser) {
         toast.error('سجّل الدخول لاستخدام ميزة الأصدقاء');
         return;
@@ -174,6 +228,8 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
     } catch (e) {
       console.error('Error rejecting request:', e);
       toast.error('خطأ في رفض الطلب');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -201,7 +257,7 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
 
   const getLevelColor = (level: string) => {
     switch (level.toLowerCase()) {
-      case 'beginner': 
+      case 'beginner':
       case 'مبتدئ': return 'bg-green-100 text-green-700';
       case 'intermediate':
       case 'متوسط': return 'bg-blue-100 text-blue-700';
@@ -214,16 +270,26 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
   if (loading || !currentUserProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <style>{`
+          @keyframes friends-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          .friends-loader {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #2563eb;
+            border-radius: 50%;
+            animation: friends-spin 0.8s linear infinite;
+          }
+        `}</style>
+        <div className="friends-loader" />
       </div>
     );
   }
 
   const allUsers = [currentUserProfile, ...friends].sort((a, b) => b.xp - a.xp);
-  const sortedByStreak = [...allUsers].sort((a, b) => {
-    // Calculate streaks based on recent activity (for now using xp as proxy)
-    return b.xp - a.xp;
-  });
 
   return (
     <div className="min-h-screen">
@@ -236,7 +302,19 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
             </button>
             <h1 className="text-2xl">الأصدقاء</h1>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) {
+                // Clear everything when dialog closes
+                setSearchEmail('');
+                setSearchResult(null);
+                setSearchError(null);
+                setSearchSuccess(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
                 <UserPlus className="w-4 h-4 mr-2" />
@@ -246,20 +324,27 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>إضافة صديق جديد</DialogTitle>
+                <DialogDescription className="hidden">
+                  ابحث عن أصدقاء لإضافتهم باستخدام بريدهم الإلكتروني.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
                   <Label htmlFor="email">البريد الإلكتروني</Label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-4">
                     <Input
                       id="email"
                       type="email"
                       value={searchEmail}
-                      onChange={(e) => setSearchEmail(e.target.value)}
+                      onChange={(e) => {
+                        setSearchEmail(e.target.value);
+                        setSearchError(null);
+                        setSearchSuccess(null); // Clear success message if user types again
+                      }}
                       placeholder="أدخل بريد الصديق الإلكتروني"
                       onKeyDown={(e) => e.key === 'Enter' && handleSearchFriend()}
                     />
-                    <Button 
+                    <Button
                       onClick={handleSearchFriend}
                       disabled={searching}
                       className="bg-gradient-to-r from-blue-600 to-purple-600"
@@ -267,10 +352,26 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                       {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'بحث'}
                     </Button>
                   </div>
+
+                  {/* Error Message */}
+                  {searchError && (
+                    <p className="text-sm text-red-500 font-medium mt-2">
+                      {searchError}
+                    </p>
+                  )}
+
+                  {/* ✅ Success Message Inline */}
+                  {searchSuccess && (
+                    <div className="flex items-center gap-2 mt-4 p-3 bg-green-50 text-green-700 rounded-lg border border-green-200">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <p className="font-medium">{searchSuccess}</p>
+                    </div>
+                  )}
                 </div>
 
-                {searchResult && (
-                  <div className="border rounded-lg p-4 bg-gray-50">
+                {/* Only show search result if there is no success message on the screen */}
+                {searchResult && !searchError && !searchSuccess && (
+                  <div className="border rounded-lg p-4 bg-gray-50 mt-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-500 text-white font-bold">
@@ -283,9 +384,17 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                       </div>
                       <Button
                         onClick={() => handleSendRequest(searchResult.id, searchResult.email)}
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                        disabled={sendingId === searchResult.id}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 flex items-center gap-2"
                       >
-                        إضافة
+                        {sendingId === searchResult.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            جاري الإرسال...
+                          </>
+                        ) : (
+                          'إضافة'
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -317,20 +426,31 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                     <div className="flex gap-2">
                       <Button
                         onClick={() => handleAcceptRequest(request.from)}
+                        disabled={processingId === request.from}
                         style={{ backgroundColor: '#16a34a', color: 'white' }}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#15803d'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#16a34a'}
-                        className="font-semibold"
+                        className="font-semibold flex items-center gap-1"
                       >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        قبول
+                        {processingId === request.from ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-4 h-4" />
+                        )}
+                        <span>قبول</span>
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => handleRejectRequest(request.from)}
+                        disabled={processingId === request.from}
+                        className="flex items-center gap-1"
                       >
-                        <XCircle className="w-4 h-4 mr-1" />
-                        رفض
+                        {processingId === request.from ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <XCircle className="w-4 h-4" />
+                        )}
+                        <span>رفض</span>
                       </Button>
                     </div>
                   </div>
@@ -399,9 +519,9 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                 {allUsers.map((person, index) => {
                   const isCurrentUser = person.id === user.id;
                   const isFriend = friends.some(f => f.id === person.id);
-                  
+
                   return (
-                    <tr 
+                    <tr
                       key={person.id}
                       className={`border-t hover:bg-gray-50 ${isCurrentUser ? 'bg-blue-50' : ''}`}
                     >
@@ -415,11 +535,10 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                            isCurrentUser 
-                              ? 'bg-gradient-to-br from-blue-500 to-purple-500' 
-                              : 'bg-gradient-to-br from-gray-400 to-gray-600'
-                          }`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${isCurrentUser
+                            ? 'bg-gradient-to-br from-blue-500 to-purple-500'
+                            : 'bg-gradient-to-br from-gray-400 to-gray-600'
+                            }`}>
                             {person.avatar}
                           </div>
                           <div>
@@ -456,21 +575,26 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
                                 <UserX className="w-4 h-4" />
                               </Button>
                             </AlertDialogTrigger>
-                            <AlertDialogContent dir="rtl">
+                            <AlertDialogContent dir="rtl" className="max-w-[400px]">
                               <AlertDialogHeader>
-                                <AlertDialogTitle>حذف الصديق</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  هل تريد حذف {person.name} من قائمة أصدقائك؟
+                                <AlertDialogTitle className="text-right text-xl">حذف الصديق</AlertDialogTitle>
+                                <AlertDialogDescription className="text-right text-base mt-2 text-gray-600">
+                                  هل تريد حذف <span className="font-bold text-gray-900">{person.name}</span> من قائمة أصدقائك؟
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
-                              <div className="flex justify-center gap-3">
-                                <AlertDialogAction 
+                              <div className="flex justify-center items-center gap-4 mt-6">
+                                <AlertDialogCancel className="w-32 mt-0">
+                                  إلغاء
+                                </AlertDialogCancel>
+                                <AlertDialogAction
                                   onClick={() => handleRemoveFriend(person.id)}
-                                  className="bg-red-600 text-white hover:bg-red-700"
+                                  className="w-32 border-0"
+                                  style={{ backgroundColor: '#dc2626', color: 'white' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
                                 >
                                   حذف
                                 </AlertDialogAction>
-                                <AlertDialogCancel>إلغاء</AlertDialogCancel>
                               </div>
                             </AlertDialogContent>
                           </AlertDialog>
@@ -551,7 +675,7 @@ export function Friends({ user, onToggleSidebar }: FriendsProps) {
             <UserPlus className="w-16 h-16 mx-auto text-gray-400 mb-4" />
             <h3 className="text-xl font-semibold mb-2">لا توجد أصدقاء بعد</h3>
             <p className="text-gray-600 mb-4">ابدأ بإضافة أصدقاء للتنافس والتعلم معهم</p>
-            <Button 
+            <Button
               onClick={() => setDialogOpen(true)}
               className="bg-gradient-to-r from-blue-600 to-purple-600"
             >

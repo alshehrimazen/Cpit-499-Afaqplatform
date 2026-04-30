@@ -83,11 +83,7 @@ export function AnalyticsPage({ user, studyPlans, onNavigate, onToggleSidebar }:
       </header>
 
       <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-8">
-        {loading && (
-          <Card className="p-4 text-sm text-gray-600">
-            جاري تحديث بيانات التحليلات من Firebase...
-          </Card>
-        )}
+
 
         {remotePlans.length === 0 ? (
           <Card className="p-10 text-center text-gray-600">
