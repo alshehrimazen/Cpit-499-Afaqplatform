@@ -485,10 +485,6 @@ export async function checkQuizAnswer(
 // Final exam
 // ==============================
 
-// ==============================
-// Final exam - Modified Version
-// ==============================
-
 export interface FinalExamQuestion {
   subject: string;
   question: string;
@@ -513,9 +509,7 @@ function letterToIndexFinal(letter: string | undefined | null): number {
   return mapping[l] ?? 0;
 }
 
-/**
- * جلب الاختبار النهائي حصرياً عبر مسار /get_final المستقر
- */
+
 export async function generateFinalExam(planId: string, level?: string): Promise<FinalExamQuestion[] | null> {
   const cacheKey = `${planId}::${level || ''}`;
   const cached = finalExamCache.get(cacheKey);
@@ -525,7 +519,7 @@ export async function generateFinalExam(planId: string, level?: string): Promise
   }
 
   const base = getQuizBaseUrl();
-  // الاعتماد على المسار الجديد الذي يسحب من Afaq_Train.jsonl مباشرة
+  
   const url = `${base}/get_final`;
 
   console.log('🚀 Calling Final Exam API (GET Only):', url);
@@ -536,7 +530,6 @@ export async function generateFinalExam(planId: string, level?: string): Promise
     });
 
     if (res?.status === 'success' && Array.isArray(res.data)) {
-      // تحويل البيانات من تنسيق السيرفر العام إلى تنسيق واجهة الاختبار النهائي
       const formattedQuestions: FinalExamQuestion[] = res.data.map((item) => ({
         subject: (item.subject || 'عام').toString(),
         question: item.display_question || item.question_text || '',

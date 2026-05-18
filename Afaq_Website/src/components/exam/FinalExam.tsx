@@ -231,20 +231,24 @@ export function FinalExam({ plan, onComplete, onToggleSidebar }: FinalExamProps)
                 <h3 className="text-xl mb-4">معلومات الاختبار</h3>
                 <ul className="space-y-3 text-gray-700">
                   <li className="flex items-start gap-2">
+                      <span className="text-blue-600">•</span>
                     <span><strong>الأسئلة:</strong> سيتم توليدها عند البدء</span>
-                    <span className="text-blue-600">•</span>
+                    
                   </li>
                   <li className="flex items-start gap-2">
+                      <span className="text-blue-600">•</span>
                     <span><strong>المواد:</strong> {subjectsLabel}</span>
-                    <span className="text-blue-600">•</span>
+                  
                   </li>
                   <li className="flex items-start gap-2">
+                      <span className="text-blue-600">•</span>
                     <span><strong>درجة النجاح:</strong> 70% أو أعلى</span>
-                    <span className="text-blue-600">•</span>
+                  
                   </li>
                   <li className="flex items-start gap-2">
-                    <span><strong>الوقت:</strong> خذ وقتك، لا يوجد حد زمني</span>
                     <span className="text-blue-600">•</span>
+                    <span><strong>الوقت:</strong> خذ وقتك، لا يوجد حد زمني</span>
+                    
                   </li>
                 </ul>
               </div>

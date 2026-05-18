@@ -30,15 +30,15 @@ MAX_LESSONS_PER_UNIT = 3
 MAX_SLIDES_PER_LESSON = 5
 
 CURRICULUM_BY_LEVEL = {
-    "ضعيف":  {"units": 2, "lessons_per_unit": 3, "slides_per_lesson":5, "top_k": 3},
+    "ضعيف":  {"units": 2, "lessons_per_unit": 3, "slides_per_lesson": 4, "top_k": 3},
     "متوسط": {"units": 2, "lessons_per_unit": 3, "slides_per_lesson": 4, "top_k": 3},
-    "جيد":   {"units": 2, "lessons_per_unit": 2, "slides_per_lesson": 3, "top_k": 2},
-    "ممتاز": {"units": 1, "lessons_per_unit": 1, "slides_per_lesson": 3, "top_k": 2},
+    "جيد":   {"units": 2, "lessons_per_unit": 2, "slides_per_lesson": 4, "top_k": 2},
+    "ممتاز": {"units": 1, "lessons_per_unit": 2, "slides_per_lesson": 4, "top_k": 2},
 }
 DEFAULT_LEVEL = "متوسط"
 
 SAVE_PATH = "generated_curriculum.json"
-MAX_TOKENS_ONE_CALL = 20000  
+MAX_TOKENS_ONE_CALL = 20000  # INCREASED FROM 14000 TO PREVENT TRUNCATION
 TIMEOUT_SEC = 140
 MAX_CONTEXT_CHARS_PER_LESSON = 2200
 MAX_TITLE_WORDS = 7
@@ -339,7 +339,7 @@ def slide_generation_system_prompt() -> str:
         "اجعل explanation لكل شريحة عبارة عن فقرة عربية من 4 إلى 6 أسطر تقريباً، كاملة وواضحة ومتماسكة، ولا تقتصر على جملة أو اثنتين. "
         "اجعل key_points 3 إلى 4 نقاط قصيرة وواضحة. "
         "ممنوع استخدام أي placeholder مثل ___0__ أو __ _0__. "
-        "للرياضيات: استخدم فقط المعادلات والقوانين الموجودة في النص المرجعي، واكتبها بصيغة LaTeX داخل (...). "
+        "للرياضيات: استخدم فقط المعادلات والقوانين الموجودة في النص المرجعي، واكتبها بصيغة LaTeX داخل $...$. "
         "لا تختصر أو تقطع الجمل المهمة، ولا تعيد نفس الفكرة في أكثر من شريحة واحدة."
     )
 
@@ -836,6 +836,8 @@ def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
 
     return []
 
+def curriculum_to_flashcards(curriculum: dict, module_id: str) -> list[dict]:
+    return [{"id": 1, "front": "سؤال تجريبي", "back": "جواب تجريبي"}]
 
 @app.get("/")
 def root():
@@ -858,6 +860,15 @@ def generate_api(payload: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/ai/module-content")
+def module_content_api(payload: GenerateRequest):
+    try:
+        query = payload.query.strip()
+        curriculum = generate_curriculum(query)
+        return curriculum_to_module_content(curriculum)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/ai/flashcards")
 def flashcards_api(payload: FlashcardsRequest):
     try:
@@ -870,8 +881,6 @@ def flashcards_api(payload: FlashcardsRequest):
                 flashcards = generate_flashcards_with_model(lesson_title, slides)
             except Exception as e:
                 print("FLASHCARDS MODEL ERROR:", repr(e))
-                # تم إزالة build_flashcards_fallback من هنا
-                # بدلاً من ذلك نعيد خطأ يوضح أن الخادم الخارجي فشل
                 raise HTTPException(status_code=503, detail="حدث خطأ أثناء توليد البطاقات من الذكاء الاصطناعي، يرجى المحاولة لاحقاً.")
 
             if not flashcards:
