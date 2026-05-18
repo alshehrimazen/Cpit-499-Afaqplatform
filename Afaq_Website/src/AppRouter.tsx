@@ -13,7 +13,6 @@ import { LessonFlashcards } from './components/study/LessonFlashcards';
 import { QuizInterface } from './components/quiz/QuizInterface';
 import { getSavedCurriculum, getModuleRoutePath, buildModuleIdFromRoute } from './services/aiApi';
 import { FinalExam } from './components/exam/FinalExam';
-import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { Sidebar } from './components/layout/Sidebar';
 import type { User, StudyPlan } from './App';
@@ -21,7 +20,7 @@ import type { User, StudyPlan } from './App';
 interface AppRouterProps {
   user: User | null;
   studyPlans: StudyPlan[];
-  curriculumProp: any; // استقبال بيانات المنهج من ملف App.tsx
+  curriculumProp: any;
   diagnosticLevel: string;
   onLogin: (email: string, password: string, isGuest?: boolean) => Promise<void>;
   onSignup: (name: string, email: string, password: string) => Promise<void>;

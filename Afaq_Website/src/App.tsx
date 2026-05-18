@@ -89,7 +89,6 @@ export default function App() {
               id: firebaseUser.uid,
               name: data.name || 'مستخدم',
               email: data.email || firebaseUser.email || '',
-              grade: 'الصف الحادي عشر',
               avatar: data.name?.charAt(0).toUpperCase() || 'U',
               plan: data.plan || 'free',
             };

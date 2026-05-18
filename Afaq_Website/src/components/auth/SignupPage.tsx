@@ -8,10 +8,9 @@ import { Card } from '../ui/card';
 
 interface SignupPageProps {
   onSignup: (name: string, email: string, password: string) => Promise<void>;
-  onNavigate?: (page: string) => void;
 }
 
-export function SignupPage({ onSignup, onNavigate }: SignupPageProps) {
+export function SignupPage({ onSignup }: SignupPageProps) {
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
